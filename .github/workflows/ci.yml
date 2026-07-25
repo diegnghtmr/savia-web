@@ -1,0 +1,13 @@
+name: CI
+on: [push]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v3
+      - run: pnpm install --frozen-lockfile --strict-peer-dependencies
+      - run: pnpm peers check
+      - run: pnpm ignored-builds
+      - run: pnpm check
+      - run: pnpm test:unit && pnpm test:component && pnpm test:design && pnpm test:audit && pnpm verify:font && pnpm build

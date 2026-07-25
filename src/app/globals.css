@@ -1,0 +1,174 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --savia-canvas: #f8f5ef;
+  --savia-surface: #fffcf7;
+  --savia-raised: #f1ece3;
+  --savia-text: #20252b;
+  --savia-muted: #53606d;
+  --savia-border: #66707b;
+  --savia-action: #075a9c;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --savia-canvas: #20252b;
+  --savia-surface: #29313a;
+  --savia-raised: #34404b;
+  --savia-text: #f8f5ef;
+  --savia-muted: #c4ccd4;
+  --savia-border: #aeb8c2;
+  --savia-action: #7fc4ff;
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  src: url("./fonts/inter-latin-wght-normal.woff2") format("woff2");
+  font-display: swap;
+}
+
+body {
+  margin: 0;
+  min-width: 20rem;
+  color: var(--savia-text);
+  background: var(--savia-canvas);
+}
+
+.theme-control {
+  display: flex;
+  justify-content: end;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 46rem;
+  min-height: 44px;
+  margin: auto;
+  padding: 0 1rem;
+  color: var(--savia-muted);
+  font-size: 0.875rem;
+}
+
+.theme-control button {
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--savia-border);
+  border-radius: 0.5rem;
+  color: var(--savia-action);
+  background: var(--savia-surface);
+  font: inherit;
+}
+
+header,
+main,
+footer {
+  max-width: 46rem;
+  margin: auto;
+  padding: 1rem;
+}
+
+nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 44px;
+}
+
+.site-header {
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--savia-border) 35%, transparent);
+}
+
+.task-shell {
+  padding-block: 3rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.5rem;
+  color: var(--savia-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+h1 {
+  max-width: 18ch;
+  margin: 0;
+  font-size: clamp(2rem, 7vw, 3.25rem);
+  line-height: 1.1;
+}
+
+.lead {
+  max-width: 38rem;
+  margin-block: 1rem 2rem;
+  color: var(--savia-muted);
+  font-size: 1.125rem;
+}
+
+.task-list {
+  padding: 0;
+  list-style: none;
+  counter-reset: task;
+}
+
+.task-list li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.75rem;
+  margin-block: 0.75rem;
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, var(--savia-border) 42%, transparent);
+  border-radius: 0.75rem;
+  background: var(--savia-surface);
+  counter-increment: task;
+}
+
+.task-list li::before {
+  color: var(--savia-action);
+  content: "0" counter(task);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.task-list h2,
+.task-list p {
+  margin: 0;
+}
+
+.task-list p {
+  grid-column: 2;
+  color: var(--savia-muted);
+}
+
+.site-footer {
+  color: var(--savia-muted);
+  font-size: 0.875rem;
+}
+
+a:focus-visible {
+  outline: 3px solid var(--savia-action);
+  outline-offset: 3px;
+}
+
+.skip-link {
+  position: absolute;
+  top: -5rem;
+  left: 1rem;
+  min-height: 44px;
+  padding: 0.75rem;
+  background: var(--savia-surface);
+}
+
+.skip-link:focus {
+  top: 1rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto;
+    transition-duration: 0.01ms !important;
+  }
+}
