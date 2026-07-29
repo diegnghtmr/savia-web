@@ -1,11 +1,30 @@
+import { createServerClient } from "@supabase/ssr";
+import type { MockInstance } from "vitest";
+import { cookies } from "next/headers";
+
 import {
+  currentSession,
   httpOnlyCookieMethods,
   readSession,
+  sessionClient,
   type SessionCookieStore,
   type SessionReader,
 } from "../src/lib/session";
 
-vi.mock("next/headers", () => ({ cookies: () => Promise.resolve(null) }));
+vi.mock("next/headers", () => ({ cookies: vi.fn() }));
+vi.mock("@supabase/ssr", () => ({ createServerClient: vi.fn() }));
+
+const CONFIG = {
+  BACKEND_BASE_URL: "http://127.0.0.1:3000",
+  SUPABASE_URL: "https://project.supabase.co",
+  SUPABASE_ANON_KEY: "anon-key",
+} as const;
+
+function withConfig(overrides: Record<string, string | undefined> = {}): void {
+  for (const [name, value] of Object.entries({ ...CONFIG, ...overrides }))
+    if (value === undefined) vi.stubEnv(name, "");
+    else vi.stubEnv(name, value);
+}
 
 function readerReturning(value: unknown): SessionReader {
   return {
@@ -126,5 +145,100 @@ describe("the session cookie writer", () => {
         {},
       ),
     ).not.toThrow();
+  });
+});
+
+describe("the composed session entry point", () => {
+  const store: SessionCookieStore = { getAll: () => [], set: () => undefined };
+  // Spied here rather than inside the one test that reads it: restoring after
+  // an assertion means a failing assertion skips the restore and leaves
+  // console.error stubbed for whatever runs next in the same worker.
+  let logged: MockInstance<typeof console.error>;
+
+  beforeEach(() => {
+    logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(cookies).mockResolvedValue(
+      store as unknown as Awaited<ReturnType<typeof cookies>>,
+    );
+    withConfig();
+  });
+
+  afterEach(() => {
+    logged.mockRestore();
+    vi.unstubAllEnvs();
+    vi.clearAllMocks();
+  });
+
+  it("carries the access token through the composed read", async () => {
+    vi.mocked(createServerClient).mockReturnValue(
+      readerReturning({
+        data: { session: { access_token: "composed-token" } },
+        error: null,
+      }) as unknown as ReturnType<typeof createServerClient>,
+    );
+
+    expect(await currentSession()).toEqual({
+      kind: "present",
+      accessToken: "composed-token",
+    });
+  });
+
+  it("reports absent when nobody is signed in", async () => {
+    vi.mocked(createServerClient).mockReturnValue(
+      readerReturning({
+        data: { session: null },
+        error: null,
+      }) as unknown as ReturnType<typeof createServerClient>,
+    );
+
+    expect(await currentSession()).toEqual({ kind: "absent" });
+  });
+
+  it("binds the HTTP-only cookie adapter to the Supabase client", async () => {
+    const written: { name: string; options: { httpOnly?: boolean } }[] = [];
+    vi.mocked(cookies).mockResolvedValue({
+      getAll: () => [{ name: "sb", value: "v" }],
+      set: (name: string, _value: string, options: { httpOnly?: boolean }) => {
+        written.push({ name, options });
+      },
+    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    vi.mocked(createServerClient).mockReturnValue(
+      {} as ReturnType<typeof createServerClient>,
+    );
+
+    await sessionClient();
+
+    const [url, key, options] = vi.mocked(createServerClient).mock.calls[0]!;
+    expect(url).toBe("https://project.supabase.co/");
+    expect(key).toBe("anon-key");
+    options.cookies.setAll!(
+      [{ name: "sb", value: "v", options: { httpOnly: false } }],
+      {},
+    );
+    expect(written).toEqual([{ name: "sb", options: { httpOnly: true } }]);
+  });
+
+  // A deployment missing its configuration would otherwise be indistinguishable
+  // from every user being signed out: the same `absent` value, and no trace.
+  it("records a configuration failure instead of reporting it as signed out", async () => {
+    withConfig({ SUPABASE_URL: undefined });
+
+    expect(await currentSession()).toEqual({ kind: "absent" });
+
+    const message = logged.mock.calls.flat(2).join(" ");
+    expect(message).toContain("SUPABASE_URL");
+  });
+
+  it("stays silent on the ordinary signed-out path", async () => {
+    vi.mocked(createServerClient).mockReturnValue(
+      readerReturning({
+        data: { session: null },
+        error: null,
+      }) as unknown as ReturnType<typeof createServerClient>,
+    );
+
+    await currentSession();
+
+    expect(logged).not.toHaveBeenCalled();
   });
 });

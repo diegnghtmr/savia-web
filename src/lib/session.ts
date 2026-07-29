@@ -121,9 +121,16 @@ export async function sessionClient(): Promise<SessionReader> {
 export async function currentSession(): Promise<Session> {
   try {
     return await readSession(await sessionClient());
-  } catch {
-    // A missing or invalid configuration must not surface as a crash to a
-    // caller that only asked whether somebody is signed in.
+  } catch (error) {
+    // A caller only asked whether somebody is signed in, so this still answers
+    // with a value rather than a crash. But failing to build the client is a
+    // deployment fault, not an anonymous visitor: unlogged it would render a
+    // misconfigured environment as every user being signed out, which looks
+    // ordinary and would go unnoticed. The reason stays on the server.
+    console.error(
+      "Could not establish the session boundary; reporting no session.",
+      error instanceof Error ? error.message : String(error),
+    );
     return { kind: SESSION_KINDS.absent };
   }
 }
