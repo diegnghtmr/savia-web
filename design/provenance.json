@@ -1,0 +1,17 @@
+{
+  "designAuthority": {
+    "revision": "8511cc30ac0eded6e7c0c6570d8811a2ae5ce62d",
+    "path": "docs/savia/DESIGN.md",
+    "sha256": "967ef4d28132f298995541089a25da6c37bac45411401646b27700f6d69e1ff8",
+    "bytes": 21377,
+    "colorCount": 32
+  },
+  "webCi": {
+    "designAuthorityAccess": "Web CI cannot access, authenticate, or independently re-hash this local source; it validates only these committed constants and vendored token identity."
+  },
+  "vendoredTokens": {
+    "path": "design/savia-tokens.json",
+    "sha256": "3fc2f85823c6a7c77d4513bfff99cbaa09caf2525c5c9ee742d16d7fda709f23",
+    "colorCount": 32
+  }
+}

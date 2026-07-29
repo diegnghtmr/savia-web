@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* Values are vendored from the Savia design authority; design/provenance.json
+   records the source revision and design/savia-tokens.json holds the committed
+   token constants that tests/design-contract.test.ts validates this file
+   against. Change a value here only by changing the vendored artifact. */
 :root {
   color-scheme: light;
   --savia-canvas: #f8f5ef;
@@ -8,19 +12,37 @@
   --savia-text: #20252b;
   --savia-muted: #53606d;
   --savia-border: #66707b;
+  --savia-control: #ffffff;
+  --savia-disabled: #4f5c67;
   --savia-action: #075a9c;
+  --savia-focus: #005ea8;
+  --savia-state-income: #0a5e55;
+  --savia-state-expense: #7a3e16;
+  --savia-state-review: #514a8a;
+  --savia-state-warning: #6a4a00;
+  --savia-state-error: #a22a2a;
+  --savia-state-success: #166534;
   font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --savia-canvas: #20252b;
-  --savia-surface: #29313a;
-  --savia-raised: #34404b;
-  --savia-text: #f8f5ef;
-  --savia-muted: #c4ccd4;
-  --savia-border: #aeb8c2;
-  --savia-action: #7fc4ff;
+  --savia-canvas: #17212b;
+  --savia-surface: #1f2b36;
+  --savia-raised: #293844;
+  --savia-text: #f7f3ea;
+  --savia-muted: #c5d0d8;
+  --savia-border: #9baab5;
+  --savia-control: #13202a;
+  --savia-disabled: #bcc8d0;
+  --savia-action: #8dccff;
+  --savia-focus: #8dccff;
+  --savia-state-income: #7de0d0;
+  --savia-state-expense: #ffd0a6;
+  --savia-state-review: #d6cfff;
+  --savia-state-warning: #ffe08a;
+  --savia-state-error: #ffb4ab;
+  --savia-state-success: #9ae6b4;
 }
 
 @font-face {
@@ -147,7 +169,7 @@ h1 {
 }
 
 a:focus-visible {
-  outline: 3px solid var(--savia-action);
+  outline: 3px solid var(--savia-focus);
   outline-offset: 3px;
 }
 

@@ -1,0 +1,82 @@
+{
+  "designSystem": "Savia",
+  "layer": "colors",
+  "colors": {
+    "light-canvas": "#F8F5EF",
+    "light-surface": "#FFFCF7",
+    "light-raised": "#F1ECE3",
+    "light-text": "#20252B",
+    "light-muted": "#53606D",
+    "light-border": "#66707B",
+    "light-control": "#FFFFFF",
+    "light-disabled": "#4F5C67",
+    "light-action": "#075A9C",
+    "light-focus": "#005EA8",
+    "dark-canvas": "#17212B",
+    "dark-surface": "#1F2B36",
+    "dark-raised": "#293844",
+    "dark-text": "#F7F3EA",
+    "dark-muted": "#C5D0D8",
+    "dark-border": "#9BAAB5",
+    "dark-control": "#13202A",
+    "dark-disabled": "#BCC8D0",
+    "dark-action": "#8DCCFF",
+    "dark-focus": "#8DCCFF",
+    "state-income-light": "#0A5E55",
+    "state-expense-light": "#7A3E16",
+    "state-review-light": "#514A8A",
+    "state-warning-light": "#6A4A00",
+    "state-error-light": "#A22A2A",
+    "state-success-light": "#166534",
+    "state-income-dark": "#7DE0D0",
+    "state-expense-dark": "#FFD0A6",
+    "state-review-dark": "#D6CFFF",
+    "state-warning-dark": "#FFE08A",
+    "state-error-dark": "#FFB4AB",
+    "state-success-dark": "#9AE6B4"
+  },
+  "cssBindings": {
+    "light": {
+      "selector": ":root",
+      "variables": {
+        "--savia-canvas": "light-canvas",
+        "--savia-surface": "light-surface",
+        "--savia-raised": "light-raised",
+        "--savia-text": "light-text",
+        "--savia-muted": "light-muted",
+        "--savia-border": "light-border",
+        "--savia-control": "light-control",
+        "--savia-disabled": "light-disabled",
+        "--savia-action": "light-action",
+        "--savia-focus": "light-focus",
+        "--savia-state-income": "state-income-light",
+        "--savia-state-expense": "state-expense-light",
+        "--savia-state-review": "state-review-light",
+        "--savia-state-warning": "state-warning-light",
+        "--savia-state-error": "state-error-light",
+        "--savia-state-success": "state-success-light"
+      }
+    },
+    "dark": {
+      "selector": ":root[data-theme=\"dark\"]",
+      "variables": {
+        "--savia-canvas": "dark-canvas",
+        "--savia-surface": "dark-surface",
+        "--savia-raised": "dark-raised",
+        "--savia-text": "dark-text",
+        "--savia-muted": "dark-muted",
+        "--savia-border": "dark-border",
+        "--savia-control": "dark-control",
+        "--savia-disabled": "dark-disabled",
+        "--savia-action": "dark-action",
+        "--savia-focus": "dark-focus",
+        "--savia-state-income": "state-income-dark",
+        "--savia-state-expense": "state-expense-dark",
+        "--savia-state-review": "state-review-dark",
+        "--savia-state-warning": "state-warning-dark",
+        "--savia-state-error": "state-error-dark",
+        "--savia-state-success": "state-success-dark"
+      }
+    }
+  }
+}

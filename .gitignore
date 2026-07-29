@@ -2,3 +2,5 @@ node_modules
 .next
 coverage
 *.tsbuildinfo
+test-results
+playwright-report
