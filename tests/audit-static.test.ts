@@ -1,4 +1,4 @@
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -53,6 +53,27 @@ describe("static boundary", () => {
     expect(result.stdout).toContain(
       "CLIENT_BOUNDARY_FIXTURES PASS cases=8 valid=1",
     );
+  });
+});
+
+describe("the test suite wiring", () => {
+  it("runs every test file from some package script", async () => {
+    // The scripts name their files one by one, and CI runs the scripts. A file
+    // nobody named is a suite that exists, passes locally, and never runs —
+    // which is how `test:server` sat outside CI until this branch noticed.
+    const manifest = JSON.parse(
+      await readFile(resolve(root, "package.json"), "utf8"),
+    );
+    const named = new Set(
+      Object.values(manifest.scripts as Record<string, string>)
+        .filter((script) => script.startsWith("vitest run "))
+        .flatMap((script) => script.slice("vitest run ".length).split(/\s+/)),
+    );
+    const files = (await readdir(resolve(root, "tests")))
+      .filter((name) => /\.test\.tsx?$/.test(name))
+      .map((name) => `tests/${name}`);
+
+    expect(files.filter((file) => !named.has(file))).toEqual([]);
   });
 });
 

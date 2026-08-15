@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 const tasks = [
   ["Qué cambió", "Identifica los cambios que requieren tu atención."],
   ["Qué revisar", "Revisa cada pendiente antes de continuar."],
@@ -30,9 +32,13 @@ export default function Page() {
             </li>
           ))}
         </ol>
+        <p>
+          <Link className="call-to-action" href="/onboarding">
+            Crear mi espacio
+          </Link>
+        </p>
       </main>
       <footer className="site-footer">Savia</footer>
     </>
   );
 }
-import Link from "next/link";

@@ -186,6 +186,127 @@ a:focus-visible {
   top: 1rem;
 }
 
+.call-to-action {
+  display: inline-block;
+  min-height: 44px;
+  padding: 0.75rem 1.25rem;
+  border-radius: 0.5rem;
+  color: var(--savia-surface);
+  background: var(--savia-action);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.onboarding-form fieldset {
+  margin: 0 0 1.5rem;
+  padding: 1rem 1.25rem 1.25rem;
+  border: 1px solid color-mix(in srgb, var(--savia-border) 42%, transparent);
+  border-radius: 0.75rem;
+  background: var(--savia-surface);
+}
+
+.onboarding-form legend {
+  padding-inline: 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.field {
+  display: grid;
+  gap: 0.375rem;
+  margin-block: 1.25rem;
+}
+
+.field label {
+  font-weight: 600;
+}
+
+.field .hint {
+  margin: 0;
+  color: var(--savia-muted);
+  font-size: 0.875rem;
+}
+
+.field input,
+.field select {
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--savia-border);
+  border-radius: 0.5rem;
+  color: var(--savia-text);
+  background: var(--savia-control);
+  font: inherit;
+}
+
+.field-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.field-inline input {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+}
+
+.field-inline label {
+  font-weight: 400;
+}
+
+.submit {
+  min-height: 44px;
+  padding: 0.75rem 1.25rem;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  color: var(--savia-surface);
+  background: var(--savia-action);
+  font: inherit;
+  font-weight: 600;
+}
+
+.submit:disabled {
+  color: var(--savia-canvas);
+  background: var(--savia-disabled);
+}
+
+.outcome {
+  margin-block: 0 1.5rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid currentcolor;
+  border-radius: 0.75rem;
+  background: var(--savia-raised);
+}
+
+.outcome-success {
+  color: var(--savia-state-success);
+}
+
+.outcome-error {
+  color: var(--savia-state-error);
+}
+
+.outcome h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.125rem;
+}
+
+.outcome ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.outcome a {
+  color: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 3px solid var(--savia-focus);
+  outline-offset: 3px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
