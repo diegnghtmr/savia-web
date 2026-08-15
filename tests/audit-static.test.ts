@@ -56,6 +56,31 @@ describe("static boundary", () => {
   });
 });
 
+describe("the toolchain CI installs", () => {
+  it("pins node and pnpm where the CI action actually reads them", async () => {
+    // CI hands the toolchain to mise, and mise ignores idiomatic version files
+    // such as `.node-version` unless a setting turns them on. Without a
+    // `mise.toml` the action installs nothing: the job would run on whatever
+    // node the runner ships and would not have pnpm at all, which is every
+    // step after the checkout.
+    const mise = await readFile(resolve(root, "mise.toml"), "utf8");
+    const manifest = JSON.parse(
+      await readFile(resolve(root, "package.json"), "utf8"),
+    );
+    const pin = (tool: string) =>
+      new RegExp(`^${tool} = "([^"]+)"`, "m").exec(mise)?.[1];
+
+    // `.node-version` stays for the tools that read it instead of mise, so the
+    // two must agree or one of them is quietly lying about the runtime.
+    expect(pin("node")).toBe(
+      (await readFile(resolve(root, ".node-version"), "utf8")).trim(),
+    );
+    expect(pin("pnpm")).toBe(
+      /^pnpm@([^+]+)/.exec(manifest.packageManager)?.[1],
+    );
+  });
+});
+
 describe("the test suite wiring", () => {
   it("runs every test file from some package script", async () => {
     // The scripts name their files one by one, and CI runs the scripts. A file
