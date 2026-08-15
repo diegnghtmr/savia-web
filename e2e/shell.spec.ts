@@ -17,6 +17,23 @@ interface AxeWindow extends Window {
   axe: AxeRunner;
 }
 
+test("keeps the system theme after React takes over the page", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/", { waitUntil: "load" });
+  // Hydration is where this used to break: the prepaint script set the
+  // attribute on `<html>`, then React reconciled an element it had rendered
+  // without one and took it back off — so a reader who asked their system for
+  // a dark interface got a flash of it and then the light one. An idle network
+  // means the client bundle has loaded and run.
+  await page.waitForLoadState("networkidle");
+
+  expect(
+    await page.evaluate(() => document.documentElement.dataset.theme ?? null),
+  ).toBe("dark");
+});
+
 test("theme is accessible, resilient, responsive, and makes no application requests", async ({
   page,
 }) => {
