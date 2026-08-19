@@ -201,7 +201,8 @@ nav {
   min-height: var(--savia-touch-min);
 }
 
-nav a {
+nav a,
+nav button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
