@@ -2,6 +2,7 @@ import "server-only";
 
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
 import { loadServerConfig } from "./server-config";
 
@@ -28,6 +29,11 @@ export interface SessionCookie {
 export interface SessionCookieStore {
   getAll(): SessionCookie[];
   set(name: string, value: string, options: CookieOptions): void;
+}
+
+/** Options configuring how the cookie adapter handles store write errors. */
+export interface HttpOnlyCookieMethodsOptions {
+  readonly tolerateWriteFailure?: boolean;
 }
 
 /**
@@ -65,7 +71,9 @@ export interface SessionReader {
  */
 export function httpOnlyCookieMethods(
   store: SessionCookieStore,
+  options: HttpOnlyCookieMethodsOptions = {},
 ): SessionCookieMethods {
+  const { tolerateWriteFailure = true } = options;
   return {
     getAll: (): SessionCookie[] => store.getAll(),
     setAll: (
@@ -75,10 +83,11 @@ export function httpOnlyCookieMethods(
         options: CookieOptions;
       }[],
     ): void => {
-      for (const { name, value, options } of cookiesToSet) {
+      for (const { name, value, options: cookieOptions } of cookiesToSet) {
         try {
-          store.set(name, value, { ...options, httpOnly: true });
-        } catch {
+          store.set(name, value, { ...cookieOptions, httpOnly: true });
+        } catch (error) {
+          if (!tolerateWriteFailure) throw error;
           // Server Components render with a read-only cookie store. A refresh
           // that cannot be persisted here is retried on the next request, so
           // dropping the write is preferable to failing the render.
@@ -117,6 +126,17 @@ export async function sessionClient(): Promise<SessionReader> {
   });
 }
 
+/** Builds a request-scoped Supabase client with write-strict cookie propagation. */
+export async function writableSessionClient(): Promise<
+  ReturnType<typeof createServerClient>
+> {
+  const config = loadServerConfig();
+  const store = await cookies();
+  return createServerClient(config.supabaseUrl.href, config.supabaseAnonKey, {
+    cookies: httpOnlyCookieMethods(store, { tolerateWriteFailure: false }),
+  });
+}
+
 /** The composed read used by Server Components and Server Actions. */
 export async function currentSession(): Promise<Session> {
   try {
@@ -133,4 +153,15 @@ export async function currentSession(): Promise<Session> {
     );
     return { kind: SESSION_KINDS.absent };
   }
+}
+
+/** Returns the active session or redirects to /sign-in if absent. */
+export async function requireSession(): Promise<
+  Extract<Session, { kind: typeof SESSION_KINDS.present }>
+> {
+  const session = await currentSession();
+  if (session.kind === SESSION_KINDS.absent) {
+    redirect("/sign-in");
+  }
+  return session;
 }
