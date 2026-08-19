@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { sweepTouchTargets } from "./touch-target";
 import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
 import { signInAs } from "./auth-helpers";
@@ -47,8 +48,7 @@ test("the onboarding form is accessible, responsive, and quiet until submitted",
   await expect(
     page.getByRole("heading", { level: 1, name: "Crea tu espacio" }),
   ).toBeVisible();
-  const submit = page.getByRole("button", { name: "Crear mi espacio" });
-  await expect(submit).toHaveCSS("min-height", "44px");
+  await sweepTouchTargets(page);
   await page.getByLabel("Correo electrónico").focus();
   await expect(page.getByLabel("Correo electrónico")).toBeFocused();
 
