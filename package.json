@@ -40,6 +40,7 @@
     "eslint-config-next": "16.2.11",
     "jsdom": "27.4.0",
     "prettier": "3.8.2",
+    "supabase": "^2.114.0",
     "tailwindcss": "4.1.18",
     "typescript": "6.0.3",
     "typescript-eslint": "8.65.0",
