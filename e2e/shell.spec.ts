@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { sweepTouchTargets } from "./touch-target";
 import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
 
@@ -53,7 +54,7 @@ test("theme is accessible, resilient, responsive, and makes no application reque
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByText("Tema actual: oscuro")).toBeVisible();
   const button = page.getByRole("button", { name: "Usar tema claro" });
-  await expect(button).toHaveCSS("min-height", "44px");
+  await sweepTouchTargets(page);
   await button.focus();
   await expect(button).toBeFocused();
   await button.click();

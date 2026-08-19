@@ -201,6 +201,14 @@ nav {
   min-height: var(--savia-touch-min);
 }
 
+nav a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+}
+
 .site-header {
   border-bottom: 1px solid
     color-mix(in srgb, var(--savia-border) 35%, transparent);
@@ -348,9 +356,8 @@ a:focus-visible {
 }
 
 .field-inline input {
-  width: 24px;
-  height: 24px;
-  min-height: 24px;
+  min-width: 44px;
+  min-height: 44px;
 }
 
 .field-inline label {
