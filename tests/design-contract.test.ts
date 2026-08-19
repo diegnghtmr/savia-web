@@ -52,7 +52,7 @@ const normalize = (v: string) => {
     .replace(/\(\s+/g, "(")
     .replace(/\s+\)/g, ")");
   return v.replace(/("[^"]*"|'[^']*')|([^"']+)/g, (match, quoted, unquoted) => {
-    if (quoted) return quoted;
+    if (quoted) return `'${quoted.slice(1, -1)}'`;
     return unquoted.toLowerCase();
   });
 };

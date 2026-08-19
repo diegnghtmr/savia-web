@@ -11,7 +11,7 @@
   },
   "vendoredTokens": {
     "path": "design/savia-tokens.json",
-    "sha256": "0ffb981dbab6774d98cafb4314e42bd7781f0244367f7a62e6d01a2054e48488",
+    "sha256": "29ed354589ff248690ceebdf06ce7e86a728db7465eaa1558e05a90e8acc2692",
     "colorCount": 32,
     "layerTokenCounts": {
       "colors": 32,
