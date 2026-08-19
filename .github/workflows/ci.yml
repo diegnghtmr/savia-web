@@ -20,4 +20,13 @@ jobs:
       # The axe-core accessibility gate needs a built app and a real browser,
       # so it runs after the build and after the browser is provisioned.
       - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm exec supabase start
+      - name: Export Supabase environment
+        run: |
+          STATUS=$(pnpm exec supabase status -o json)
+          echo "SUPABASE_URL=$(echo "$STATUS" | jq -r '.API_URL')" >> $GITHUB_ENV
+          echo "SUPABASE_ANON_KEY=$(echo "$STATUS" | jq -r '.ANON_KEY')" >> $GITHUB_ENV
+          echo "SUPABASE_SERVICE_ROLE_KEY=$(echo "$STATUS" | jq -r '.SERVICE_ROLE_KEY')" >> $GITHUB_ENV
+          echo "BACKEND_BASE_URL=http://127.0.0.1:3000" >> $GITHUB_ENV
+      - run: node scripts/seed-e2e-user.mjs
       - run: pnpm test:e2e
