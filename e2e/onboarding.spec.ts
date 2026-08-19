@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
+import { signInAs } from "./auth-helpers";
+import { E2E_USER } from "./fixtures";
 
 const require = createRequire(import.meta.url);
 const axe = await readFile(require.resolve("axe-core"), "utf8");
@@ -20,6 +22,8 @@ interface AxeWindow extends Window {
 test("the onboarding form is accessible, responsive, and quiet until submitted", async ({
   page,
 }) => {
+  await signInAs(page, E2E_USER.email, E2E_USER.password);
+
   const runtime: string[] = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
@@ -64,6 +68,7 @@ test("the onboarding form is accessible, responsive, and quiet until submitted",
 });
 
 test("the home page offers the way in", async ({ page }) => {
+  await signInAs(page, E2E_USER.email, E2E_USER.password);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByRole("link", { name: "Crear mi espacio" }).click();
   await expect(
