@@ -70,3 +70,39 @@ test("theme is accessible, resilient, responsive, and makes no application reque
   ).toBe(true);
   expect(runtime).toEqual([]);
 });
+
+test("all typography roles apply non-normal font feature and variation settings in the browser", async ({
+  page,
+}) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const roles = [
+    "body-md",
+    "label-md",
+    "finance-md",
+    "editorial-lg",
+    "technical-sm",
+  ] as const;
+
+  const results = await page.evaluate((roleNames) => {
+    return roleNames.map((role) => {
+      const el = document.createElement("span");
+      el.className = `type-${role}`;
+      document.body.appendChild(el);
+      const computed = window.getComputedStyle(el);
+      return {
+        role,
+        fontFeatureSettings: computed.fontFeatureSettings,
+        fontVariationSettings: computed.fontVariationSettings,
+      };
+    });
+  }, roles);
+
+  expect(results).toHaveLength(5);
+  for (const result of results) {
+    expect(result.fontFeatureSettings).not.toBe("normal");
+    expect(result.fontVariationSettings).not.toBe("normal");
+  }
+
+  const finance = results.find((r) => r.role === "finance-md");
+  expect(finance?.fontFeatureSettings).toContain("tnum");
+});
