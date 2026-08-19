@@ -43,7 +43,27 @@ const sha256 = (content: string) =>
 
 // [TRAP 1] Collapse whitespace so Prettier line-wrapping does not break value
 // comparisons. The `.site-header` border-bottom already wraps across lines.
-const normalize = (v: string) => v.trim().replace(/\s+/g, " ").toLowerCase();
+// CHOICE (a): We do not lower-case inside quoted substrings.
+// This prevents semantically different quoted values (like font families or font-feature settings like `'tnum' 1`) from equating, while allowing hex colors and keywords to be case-insensitive outside quotes.
+const normalize = (v: string) => {
+  v = v
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\(\s+/g, "(")
+    .replace(/\s+\)/g, ")");
+  return v.replace(/("[^"]*"|'[^']*')|([^"']+)/g, (match, quoted, unquoted) => {
+    if (quoted) return quoted;
+    return unquoted.toLowerCase();
+  });
+};
+
+describe("normalize", () => {
+  it("collapses whitespace and lowercases unquoted text, preserving quoted values", () => {
+    expect(normalize("  'tnum' 1,   'kern'  1 ")).toBe("'tnum' 1, 'kern' 1");
+    expect(normalize("  Inter,   ui-sans-serif ")).toBe("inter, ui-sans-serif");
+    expect(normalize("  #FF0000 ")).toBe("#ff0000");
+  });
+});
 
 // [TRAP 2] Extract a single CSS rule block for `selector`. Throws if the
 // selector's opening brace appears more than once (nested brace guard).
@@ -58,19 +78,34 @@ const ruleBlock = (styles: string, selector: string): string => {
       `globals.css opens "${selector}" more than once (nested brace?)`,
     );
   }
-  const end = styles.indexOf("}", first);
-  if (end === -1) throw new Error(`globals.css never closes "${selector}"`);
-  return styles.slice(first + opening.length, end);
+  const startContent = first + opening.length;
+  let depth = 1;
+  let i = startContent;
+  for (; i < styles.length; i++) {
+    if (styles[i] === "{") depth++;
+    else if (styles[i] === "}") {
+      depth--;
+      if (depth === 0) break;
+    }
+  }
+  if (depth > 0) throw new Error(`globals.css never closes "${selector}"`);
+  return styles.slice(startContent, i);
 };
 
 // Reads every `--savia-*` declaration from a single rule block.
 const declaredTokens = (styles: string, selector: string) => {
   const block = ruleBlock(styles, selector);
-  return Object.fromEntries(
-    [...block.matchAll(/(--savia-[a-z-]+)\s*:\s*([^;]+);/g)].map(
-      ([, name, value]) => [name, normalize(value)],
-    ),
-  );
+  const entries: [string, string][] = [];
+  const seen = new Set<string>();
+  for (const match of block.matchAll(/(--savia-[a-z-]+)\s*:\s*([^;]+);/g)) {
+    const [, name, value] = match;
+    if (seen.has(name)) {
+      throw new Error(`Duplicate declaration of "${name}" in "${selector}"`);
+    }
+    seen.add(name);
+    entries.push([name, normalize(value)]);
+  }
+  return Object.fromEntries(entries);
 };
 
 // Resolve a "layer.key" reference (e.g. "colors.light-canvas") to a value.
@@ -110,6 +145,37 @@ const findCopiedAuthority = async (directory: string): Promise<string[]> => {
   }
   return found;
 };
+
+describe("ruleBlock", () => {
+  it("extracts a brace-balanced block including nested at-rules", () => {
+    const css = `
+.target {
+  --a: 1;
+  @media (prefers-reduced-motion) {
+    --b: 2;
+  }
+  --c: 3;
+}`;
+    const block = ruleBlock(css, ".target");
+    expect(block).toContain("--a: 1;");
+    expect(block).toContain("--b: 2;");
+    expect(block).toContain("--c: 3;");
+  });
+});
+
+describe("declaredTokens", () => {
+  it("throws if a custom property is declared more than once in the same block", () => {
+    const css = `
+.target {
+  --savia-color: red;
+  --savia-other: blue;
+  --savia-color: green;
+}`;
+    expect(() => declaredTokens(css, ".target")).toThrow(
+      /Duplicate declaration/i,
+    );
+  });
+});
 
 describe("the Savia visual contract", () => {
   it("records the design authority it was vendored from without claiming CI can re-hash it", async () => {
@@ -251,7 +317,47 @@ describe("the Savia visual contract", () => {
     expect(layerOf(tokens, "components")).toBeUndefined();
     const reserved = new Set(["designSystem", "layers", "cssBindings"]);
     const topKeys = Object.keys(tokens).filter((k) => !reserved.has(k));
-    expect(topKeys.sort()).toEqual([...tokens.layers].sort());
+    expect(topKeys.sort()).toEqual(
+      ["colors", "rounded", "spacing", "typography"].sort(),
+    );
+  });
+
+  it("emits 5 role classes with exactly 7 declarations each, mapped to their own variables", async () => {
+    const styles = await read("src/app/globals.css");
+    const roles = [
+      "body-md",
+      "label-md",
+      "finance-md",
+      "editorial-lg",
+      "technical-sm",
+    ];
+    const props = [
+      "font-family",
+      "font-size",
+      "font-weight",
+      "line-height",
+      "letter-spacing",
+      "font-feature-settings",
+      "font-variation-settings",
+    ];
+
+    for (const role of roles) {
+      const block = ruleBlock(styles, `.type-${role}`);
+      // Find all property declarations in this block (excluding custom properties)
+      const declarations = Object.fromEntries(
+        [...block.matchAll(/([a-z-]+)\s*:\s*([^;]+);/g)]
+          .filter(([, name]) => !name.startsWith("--"))
+          .map(([, name, value]) => [name, normalize(value)]),
+      );
+
+      const expected: Record<string, string> = {};
+      for (const prop of props) {
+        expected[prop] = normalize(`var(--savia-type-${role}-${prop})`);
+      }
+
+      expect(declarations).toEqual(expected);
+      expect(Object.keys(declarations)).toHaveLength(7);
+    }
   });
 
   it("uses the local Inter asset and the dedicated focus token", async () => {
