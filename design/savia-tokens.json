@@ -1,6 +1,6 @@
 {
   "designSystem": "Savia",
-  "layer": "colors",
+  "layers": ["colors", "rounded", "spacing"],
   "colors": {
     "light-canvas": "#F8F5EF",
     "light-surface": "#FFFCF7",
@@ -35,47 +35,80 @@
     "state-error-dark": "#FFB4AB",
     "state-success-dark": "#9AE6B4"
   },
+  "rounded": {
+    "sm": "4px",
+    "DEFAULT": "8px",
+    "md": "12px",
+    "lg": "16px",
+    "xl": "24px",
+    "full": "9999px"
+  },
+  "spacing": {
+    "xs": "4px",
+    "sm": "8px",
+    "md": "16px",
+    "lg": "24px",
+    "xl": "32px",
+    "touch-min": "44px"
+  },
   "cssBindings": {
     "light": {
       "selector": ":root",
       "variables": {
-        "--savia-canvas": "light-canvas",
-        "--savia-surface": "light-surface",
-        "--savia-raised": "light-raised",
-        "--savia-text": "light-text",
-        "--savia-muted": "light-muted",
-        "--savia-border": "light-border",
-        "--savia-control": "light-control",
-        "--savia-disabled": "light-disabled",
-        "--savia-action": "light-action",
-        "--savia-focus": "light-focus",
-        "--savia-state-income": "state-income-light",
-        "--savia-state-expense": "state-expense-light",
-        "--savia-state-review": "state-review-light",
-        "--savia-state-warning": "state-warning-light",
-        "--savia-state-error": "state-error-light",
-        "--savia-state-success": "state-success-light"
+        "--savia-canvas": "colors.light-canvas",
+        "--savia-surface": "colors.light-surface",
+        "--savia-raised": "colors.light-raised",
+        "--savia-text": "colors.light-text",
+        "--savia-muted": "colors.light-muted",
+        "--savia-border": "colors.light-border",
+        "--savia-control": "colors.light-control",
+        "--savia-disabled": "colors.light-disabled",
+        "--savia-action": "colors.light-action",
+        "--savia-focus": "colors.light-focus",
+        "--savia-state-income": "colors.state-income-light",
+        "--savia-state-expense": "colors.state-expense-light",
+        "--savia-state-review": "colors.state-review-light",
+        "--savia-state-warning": "colors.state-warning-light",
+        "--savia-state-error": "colors.state-error-light",
+        "--savia-state-success": "colors.state-success-light"
       }
     },
     "dark": {
       "selector": ":root[data-theme=\"dark\"]",
       "variables": {
-        "--savia-canvas": "dark-canvas",
-        "--savia-surface": "dark-surface",
-        "--savia-raised": "dark-raised",
-        "--savia-text": "dark-text",
-        "--savia-muted": "dark-muted",
-        "--savia-border": "dark-border",
-        "--savia-control": "dark-control",
-        "--savia-disabled": "dark-disabled",
-        "--savia-action": "dark-action",
-        "--savia-focus": "dark-focus",
-        "--savia-state-income": "state-income-dark",
-        "--savia-state-expense": "state-expense-dark",
-        "--savia-state-review": "state-review-dark",
-        "--savia-state-warning": "state-warning-dark",
-        "--savia-state-error": "state-error-dark",
-        "--savia-state-success": "state-success-dark"
+        "--savia-canvas": "colors.dark-canvas",
+        "--savia-surface": "colors.dark-surface",
+        "--savia-raised": "colors.dark-raised",
+        "--savia-text": "colors.dark-text",
+        "--savia-muted": "colors.dark-muted",
+        "--savia-border": "colors.dark-border",
+        "--savia-control": "colors.dark-control",
+        "--savia-disabled": "colors.dark-disabled",
+        "--savia-action": "colors.dark-action",
+        "--savia-focus": "colors.dark-focus",
+        "--savia-state-income": "colors.state-income-dark",
+        "--savia-state-expense": "colors.state-expense-dark",
+        "--savia-state-review": "colors.state-review-dark",
+        "--savia-state-warning": "colors.state-warning-dark",
+        "--savia-state-error": "colors.state-error-dark",
+        "--savia-state-success": "colors.state-success-dark"
+      }
+    },
+    "invariant": {
+      "selector": ":root",
+      "variables": {
+        "--savia-rounded-sm": "rounded.sm",
+        "--savia-rounded": "rounded.DEFAULT",
+        "--savia-rounded-md": "rounded.md",
+        "--savia-rounded-lg": "rounded.lg",
+        "--savia-rounded-xl": "rounded.xl",
+        "--savia-rounded-full": "rounded.full",
+        "--savia-space-xs": "spacing.xs",
+        "--savia-space-sm": "spacing.sm",
+        "--savia-space-md": "spacing.md",
+        "--savia-space-lg": "spacing.lg",
+        "--savia-space-xl": "spacing.xl",
+        "--savia-touch-min": "spacing.touch-min"
       }
     }
   }

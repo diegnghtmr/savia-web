@@ -29,12 +29,58 @@ interface CssBinding {
 }
 
 interface VendoredTokens {
+  designSystem: string;
+  layers: string[];
   colors: Record<string, string>;
+  rounded: Record<string, string>;
+  spacing: Record<string, string>;
   cssBindings: Record<string, CssBinding>;
+  [key: string]: unknown;
 }
 
 const sha256 = (content: string) =>
   createHash("sha256").update(content).digest("hex");
+
+// [TRAP 1] Collapse whitespace so Prettier line-wrapping does not break value
+// comparisons. The `.site-header` border-bottom already wraps across lines.
+const normalize = (v: string) => v.trim().replace(/\s+/g, " ").toLowerCase();
+
+// [TRAP 2] Extract a single CSS rule block for `selector`. Throws if the
+// selector's opening brace appears more than once (nested brace guard).
+const ruleBlock = (styles: string, selector: string): string => {
+  const opening = `${selector} {`;
+  const first = styles.indexOf(opening);
+  if (first === -1) {
+    throw new Error(`globals.css declares no "${selector}" rule`);
+  }
+  if (styles.indexOf(opening, first + opening.length) !== -1) {
+    throw new Error(
+      `globals.css opens "${selector}" more than once (nested brace?)`,
+    );
+  }
+  const end = styles.indexOf("}", first);
+  if (end === -1) throw new Error(`globals.css never closes "${selector}"`);
+  return styles.slice(first + opening.length, end);
+};
+
+// Reads every `--savia-*` declaration from a single rule block.
+const declaredTokens = (styles: string, selector: string) => {
+  const block = ruleBlock(styles, selector);
+  return Object.fromEntries(
+    [...block.matchAll(/(--savia-[a-z-]+)\s*:\s*([^;]+);/g)].map(
+      ([, name, value]) => [name, normalize(value)],
+    ),
+  );
+};
+
+// Resolve a "layer.key" reference (e.g. "colors.light-canvas") to a value.
+const layerOf = (
+  tokens: VendoredTokens,
+  layerName: string,
+): Record<string, string> | undefined => {
+  if (!tokens.layers.includes(layerName)) return undefined;
+  return tokens[layerName] as Record<string, string> | undefined;
+};
 
 // A claim that CI verifies the upstream authority would be false: the file is
 // not in this repository. Assert the honest wording is never contradicted.
@@ -65,25 +111,6 @@ const findCopiedAuthority = async (directory: string): Promise<string[]> => {
   return found;
 };
 
-// Reads one CSS rule block and returns every `--savia-*` custom property it
-// declares. Values are lowercased so the authority's uppercase hex notation and
-// the stylesheet's lowercase notation compare as equal.
-const declaredTokens = (styles: string, selector: string) => {
-  const opening = `${selector} {`;
-  const start = styles.indexOf(opening);
-  if (start === -1) {
-    throw new Error(`globals.css declares no "${selector}" rule`);
-  }
-  const end = styles.indexOf("}", start);
-  if (end === -1) throw new Error(`globals.css never closes "${selector}"`);
-  const block = styles.slice(start + opening.length, end);
-  return Object.fromEntries(
-    [...block.matchAll(/(--savia-[a-z-]+)\s*:\s*([^;]+);/g)].map(
-      ([, name, value]) => [name, value.trim().toLowerCase()],
-    ),
-  );
-};
-
 describe("the Savia visual contract", () => {
   it("records the design authority it was vendored from without claiming CI can re-hash it", async () => {
     const rawProvenance = await read("design/provenance.json");
@@ -97,6 +124,14 @@ describe("the Savia visual contract", () => {
       path: VENDORED_TOKENS_PATH,
       sha256: sha256(rawTokens),
       colorCount: Object.keys(tokens.colors).length,
+      layerTokenCounts: Object.fromEntries(
+        tokens.layers.map((layer) => {
+          const data = layerOf(tokens, layer);
+          if (!data)
+            throw new Error(`Layer "${layer}" declared but not defined`);
+          return [layer, Object.keys(data).length];
+        }),
+      ),
     });
     expect(Object.keys(tokens.colors)).toHaveLength(
       DESIGN_AUTHORITY.colorCount,
@@ -107,43 +142,116 @@ describe("the Savia visual contract", () => {
     expect(await findCopiedAuthority(root)).toEqual([]);
   });
 
-  it("declares every vendored token, in both themes, with the authority's exact value", async () => {
+  it("declares every vendored token, in both themes and invariant, with the authority's exact value", async () => {
     const styles = await read("src/app/globals.css");
     const tokens: VendoredTokens = JSON.parse(await read(VENDORED_TOKENS_PATH));
 
-    const byTheme = <T>(map: (binding: CssBinding, theme: string) => T) =>
-      Object.fromEntries(
-        Object.entries(tokens.cssBindings).map(([theme, binding]) => [
-          theme,
-          map(binding, theme),
-        ]),
-      );
-    const expected = byTheme((binding, theme) =>
-      Object.fromEntries(
-        Object.entries(binding.variables).map(([variable, token]) => {
-          const value = tokens.colors[token];
-          if (!value)
-            throw new Error(`${theme} binds unknown token "${token}"`);
-          return [variable, value.toLowerCase()];
-        }),
-      ),
-    );
+    // Fold ALL cssBindings groups by their selector into
+    // expected: Record<selector, Record<variable, value>>, throwing on
+    // duplicate variables within one selector.
+    const expected: Record<string, Record<string, string>> = {};
+    for (const [theme, binding] of Object.entries(tokens.cssBindings)) {
+      const sel = binding.selector;
+      if (!expected[sel]) expected[sel] = {};
+      for (const [variable, ref] of Object.entries(binding.variables)) {
+        if (variable in expected[sel]) {
+          throw new Error(
+            `Duplicate variable "${variable}" in selector "${sel}"`,
+          );
+        }
+        const dotIdx = ref.indexOf(".");
+        if (dotIdx === -1)
+          throw new Error(
+            `${theme} binds "${variable}" to "${ref}" which has no layer prefix`,
+          );
+        const layerName = ref.slice(0, dotIdx);
+        const key = ref.slice(dotIdx + 1);
+        const layer = layerOf(tokens, layerName);
+        if (!layer)
+          throw new Error(
+            `${theme} references unknown layer "${layerName}" for "${variable}"`,
+          );
+        const value = layer[key];
+        if (value === undefined)
+          throw new Error(
+            `${theme} binds "${variable}" to unknown key "${key}" in layer "${layerName}"`,
+          );
+        expected[sel][variable] = normalize(value);
+      }
+    }
 
-    // Both themes are compared in one assertion so the diff reports every
-    // missing, extra, and drifted custom property by name at once: a single
-    // wrong hex fails this test and identifies itself.
-    expect(
-      byTheme((binding) => declaredTokens(styles, binding.selector)),
-    ).toEqual(expected);
+    // Compare per selector.
+    const actual: Record<string, Record<string, string>> = {};
+    for (const sel of Object.keys(expected)) {
+      actual[sel] = declaredTokens(styles, sel);
+    }
+    expect(actual).toEqual(expected);
 
-    // Every vendored color must reach the stylesheet through some binding;
-    // otherwise a token could drift unobserved behind a green test.
-    const bound = Object.values(tokens.cssBindings).flatMap((binding) =>
-      Object.values(binding.variables),
+    // No-orphan-TOKEN assertion: for each layer, the set of referenced keys
+    // equals the set of declared keys.
+    for (const layerName of tokens.layers) {
+      const layer = layerOf(tokens, layerName);
+      if (!layer) throw new Error(`Layer "${layerName}" missing`);
+      const declaredKeys = Object.keys(layer).sort();
+      const referencedKeys = new Set<string>();
+      for (const binding of Object.values(tokens.cssBindings)) {
+        for (const ref of Object.values(binding.variables)) {
+          const dotIdx = ref.indexOf(".");
+          if (dotIdx === -1) continue;
+          if (ref.slice(0, dotIdx) === layerName) {
+            referencedKeys.add(ref.slice(dotIdx + 1));
+          }
+        }
+      }
+      expect([...referencedKeys].sort()).toEqual(declaredKeys);
+    }
+  });
+
+  // [TRAP 4] No-orphan-var() assertion: every var(--savia-...) referenced
+  // anywhere in globals.css must appear as a declaration inside the
+  // UNCONDITIONAL :root block specifically.
+  it("resolves every var(--savia-*) reference against the unconditional :root", async () => {
+    const styles = await read("src/app/globals.css");
+    const rootBlock = ruleBlock(styles, ":root");
+    const rootDeclarations = new Set(
+      [...rootBlock.matchAll(/(--savia-[a-z-]+)\s*:/g)].map(([, n]) => n),
     );
-    expect([...new Set(bound)].sort()).toEqual(
-      Object.keys(tokens.colors).sort(),
+    const allRefs = new Set(
+      [...styles.matchAll(/var\((--savia-[a-z-]+)\)/g)].map(([, n]) => n),
     );
+    for (const ref of allRefs) {
+      expect(rootDeclarations).toContain(ref);
+    }
+  });
+
+  // No-declaration-outside-bindings assertion: after removing every binding
+  // selector's block, the remaining CSS must contain no --savia-*: declaration.
+  it("declares --savia-* variables only inside binding selectors", async () => {
+    const styles = await read("src/app/globals.css");
+    const tokens: VendoredTokens = JSON.parse(await read(VENDORED_TOKENS_PATH));
+    let remaining = styles;
+    const selectors = new Set(
+      Object.values(tokens.cssBindings).map((b) => b.selector),
+    );
+    for (const sel of selectors) {
+      const opening = `${sel} {`;
+      const start = remaining.indexOf(opening);
+      if (start === -1) continue;
+      const end = remaining.indexOf("}", start);
+      if (end === -1) continue;
+      remaining = remaining.slice(0, start) + remaining.slice(end + 1);
+    }
+    expect(remaining).not.toMatch(/--savia-[a-z-]+\s*:/);
+  });
+
+  // Components-absent assertion: no "components" layer exists, and
+  // Object.keys(tokens) minus designSystem/layers/cssBindings equals tokens.layers.
+  it("never adds a components layer and has only declared layers as top-level keys", async () => {
+    const tokens: VendoredTokens = JSON.parse(await read(VENDORED_TOKENS_PATH));
+    expect(layerOf(tokens, "components")).toBeUndefined();
+    const reserved = new Set(["designSystem", "layers", "cssBindings"]);
+    const topKeys = Object.keys(tokens).filter((k) => !reserved.has(k));
+    expect(topKeys.sort()).toEqual([...tokens.layers].sort());
   });
 
   it("uses the local Inter asset and the dedicated focus token", async () => {
