@@ -8,7 +8,7 @@
     "check": "prettier --check . && eslint . && tsc --noEmit",
     "test:component": "vitest run tests/page.test.tsx tests/onboarding-form.test.tsx",
     "test:unit": "vitest run tests/theme.test.tsx tests/onboarding-draft.test.ts",
-    "test:server": "vitest run tests/server-config.test.ts tests/session.test.ts tests/onboarding.test.ts",
+    "test:server": "vitest run tests/server-config.test.ts tests/session.test.ts tests/onboarding.test.ts tests/auth-gateway.test.ts",
     "test:design": "vitest run tests/design-contract.test.ts",
     "test:audit": "vitest run tests/audit-static.test.ts",
     "test:e2e": "playwright test",

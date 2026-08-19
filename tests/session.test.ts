@@ -1,17 +1,21 @@
 import { createServerClient } from "@supabase/ssr";
 import type { MockInstance } from "vitest";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
 import {
   currentSession,
   httpOnlyCookieMethods,
   readSession,
+  requireSession,
   sessionClient,
+  writableSessionClient,
   type SessionCookieStore,
   type SessionReader,
 } from "../src/lib/session";
 
 vi.mock("next/headers", () => ({ cookies: vi.fn() }));
+vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("@supabase/ssr", () => ({ createServerClient: vi.fn() }));
 
 const CONFIG = {
@@ -132,7 +136,7 @@ describe("the session cookie writer", () => {
     ]);
   });
 
-  it("tolerates a read-only cookie store instead of failing the render", () => {
+  it("tolerates a read-only cookie store by default instead of failing the render", () => {
     const store: SessionCookieStore = {
       getAll: () => [],
       set: () => {
@@ -145,6 +149,21 @@ describe("the session cookie writer", () => {
         {},
       ),
     ).not.toThrow();
+  });
+
+  it("propagates cookie-write failures when write tolerance is disabled", () => {
+    const store: SessionCookieStore = {
+      getAll: () => [],
+      set: () => {
+        throw new Error("Cookies can only be modified in a Server Action");
+      },
+    };
+    expect(() =>
+      httpOnlyCookieMethods(store, { tolerateWriteFailure: false }).setAll(
+        [{ name: "sb-project-auth-token", value: "value", options: {} }],
+        {},
+      ),
+    ).toThrow("Cookies can only be modified in a Server Action");
   });
 });
 
@@ -216,6 +235,58 @@ describe("the composed session entry point", () => {
       {},
     );
     expect(written).toEqual([{ name: "sb", options: { httpOnly: true } }]);
+  });
+
+  it("binds the write-strict cookie adapter to the Supabase client", async () => {
+    vi.mocked(cookies).mockResolvedValue({
+      getAll: () => [],
+      set: () => {
+        throw new Error("cookie store read only");
+      },
+    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    vi.mocked(createServerClient).mockReturnValue(
+      {} as ReturnType<typeof createServerClient>,
+    );
+
+    await writableSessionClient();
+
+    const [url, key, options] = vi.mocked(createServerClient).mock.calls[0]!;
+    expect(url).toBe("https://project.supabase.co/");
+    expect(key).toBe("anon-key");
+    expect(() =>
+      options.cookies.setAll!(
+        [{ name: "sb", value: "v", options: { httpOnly: false } }],
+        {},
+      ),
+    ).toThrow("cookie store read only");
+  });
+
+  it("returns the session through requireSession when present", async () => {
+    vi.mocked(createServerClient).mockReturnValue(
+      readerReturning({
+        data: { session: { access_token: "required-token" } },
+        error: null,
+      }) as unknown as ReturnType<typeof createServerClient>,
+    );
+
+    const session = await requireSession();
+    expect(session).toEqual({
+      kind: "present",
+      accessToken: "required-token",
+    });
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("redirects to /sign-in through requireSession when absent", async () => {
+    vi.mocked(createServerClient).mockReturnValue(
+      readerReturning({
+        data: { session: null },
+        error: null,
+      }) as unknown as ReturnType<typeof createServerClient>,
+    );
+
+    await requireSession();
+    expect(redirect).toHaveBeenCalledWith("/sign-in");
   });
 
   // A deployment missing its configuration would otherwise be indistinguishable
