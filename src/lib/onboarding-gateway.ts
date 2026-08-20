@@ -169,17 +169,11 @@ function readAggregate(body: unknown): OnboardingAggregate | null {
   return { profileId, workspaceId };
 }
 
-// The OpenAPI authority declares validation problems under `errors`. The
-// backend currently emits `violations` during transition; we prefer `errors`
-// and fall back to `violations` temporarily until the backend ships `errors`.
+// The OpenAPI authority declares validation problems under `errors`.
 function readViolations(body: unknown): readonly FieldViolation[] {
   if (typeof body !== "object" || body === null) return [];
   const record = body as Record<string, unknown>;
-  const rawEntries = Array.isArray(record.errors)
-    ? record.errors
-    : Array.isArray(record.violations)
-      ? record.violations
-      : [];
+  const rawEntries = Array.isArray(record.errors) ? record.errors : [];
   return rawEntries.flatMap((entry) => {
     if (typeof entry !== "object" || entry === null) return [];
     const { field, message } = entry as Record<string, unknown>;

@@ -125,7 +125,7 @@ describe("the onboarding response mapping", () => {
           title: "Request validation failed",
           status: 400,
           instance: "/v1/onboarding",
-          violations: [
+          errors: [
             { field: "email", message: "must be a valid email address" },
             { field: "locale", message: "must be a supported locale" },
           ],
@@ -157,7 +157,7 @@ describe("the onboarding response mapping", () => {
       new Response(
         JSON.stringify({
           status: 400,
-          violations: [
+          errors: [
             { field: "email", message: "must be a valid email address" },
             { field: 7, message: null },
             "boom",
@@ -190,7 +190,7 @@ describe("the onboarding response mapping", () => {
     });
   });
 
-  it("surfaces violations from the legacy violations property when errors is absent", async () => {
+  it("ignores the legacy violations property when errors is absent", async () => {
     const { result } = await call(
       new Response(
         JSON.stringify({
@@ -202,7 +202,7 @@ describe("the onboarding response mapping", () => {
     );
     expect(result).toEqual({
       kind: ONBOARDING_RESULT_KINDS.invalid,
-      violations: [{ field: "email", message: "Bad email" }],
+      violations: [],
     });
   });
 
