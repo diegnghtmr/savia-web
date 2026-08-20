@@ -174,6 +174,55 @@ describe("the onboarding response mapping", () => {
     });
   });
 
+  it("surfaces violations from the errors property in problem responses", async () => {
+    const { result } = await call(
+      new Response(
+        JSON.stringify({
+          status: 400,
+          errors: [{ field: "email", code: "invalid", message: "Bad email" }],
+        }),
+        { status: 400, headers: problemHeaders },
+      ),
+    );
+    expect(result).toEqual({
+      kind: ONBOARDING_RESULT_KINDS.invalid,
+      violations: [{ field: "email", message: "Bad email" }],
+    });
+  });
+
+  it("surfaces violations from the legacy violations property when errors is absent", async () => {
+    const { result } = await call(
+      new Response(
+        JSON.stringify({
+          status: 400,
+          violations: [{ field: "email", message: "Bad email" }],
+        }),
+        { status: 400, headers: problemHeaders },
+      ),
+    );
+    expect(result).toEqual({
+      kind: ONBOARDING_RESULT_KINDS.invalid,
+      violations: [{ field: "email", message: "Bad email" }],
+    });
+  });
+
+  it("prefers errors over violations when both are present in problem responses", async () => {
+    const { result } = await call(
+      new Response(
+        JSON.stringify({
+          status: 400,
+          errors: [{ field: "email", code: "invalid", message: "From errors" }],
+          violations: [{ field: "email", message: "From violations" }],
+        }),
+        { status: 400, headers: problemHeaders },
+      ),
+    );
+    expect(result).toEqual({
+      kind: ONBOARDING_RESULT_KINDS.invalid,
+      violations: [{ field: "email", message: "From errors" }],
+    });
+  });
+
   it("maps 401 onto an unauthenticated result", async () => {
     const { result } = await call(
       new Response(JSON.stringify({ status: 401 }), {
