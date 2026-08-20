@@ -37,7 +37,7 @@ export interface OnboardingAggregate {
   readonly workspaceId: string;
 }
 
-/** One entry of the `violations` array the backend returns on 400. */
+/** One entry of the `errors` array the backend returns on a 400 problem response. */
 export interface FieldViolation {
   readonly field: string;
   readonly message: string;
