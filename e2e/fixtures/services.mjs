@@ -80,6 +80,7 @@ async function handle(request, reply) {
             ? [workspace("Casa"), workspace("Oficina")]
             : [],
         replays: new Map(),
+        accounts: new Map(),
       });
       return json(200, {
         user,
@@ -143,8 +144,79 @@ async function handle(request, reply) {
       return json(201, created);
     }
     default:
+      if (url.pathname.startsWith("/v1/accounts")) {
+        if (!session) return unauthorized();
+        return handleAccounts(request, url, session, json);
+      }
       return json(404, { message: "Unsupported fixture route" });
   }
+}
+
+async function handleAccounts(request, url, session, json) {
+  const space = session.workspaces.find(
+    ({ id }) => id === request.headers["x-workspace-id"],
+  );
+  if (!space) return json(403, { title: "Workspace access denied" });
+  const now = new Date().toISOString();
+  const resource = (draft) => ({
+    id: randomUUID(),
+    status: "active",
+    includeInNetWorth: true,
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+    ...draft,
+  });
+  if (!session.accounts.has(space.id)) {
+    session.accounts.set(
+      space.id,
+      space.name === "Casa"
+        ? [resource({ name: "Caja", type: "cash", currency: "COP" })]
+        : [],
+    );
+  }
+  const rows = session.accounts.get(space.id);
+  if (url.pathname === "/v1/accounts" && request.method === "POST") {
+    const key = request.headers["idempotency-key"];
+    if (!uuid.test(key)) return json(400, { title: "Missing idempotency key" });
+    const body = await readJson(request);
+    const draft = JSON.stringify(body);
+    const replayKey = `accounts:${space.id}:${key}`;
+    const replay = session.replays.get(replayKey);
+    if (replay)
+      return replay.draft === draft ? json(201, replay.created) : json(409, {});
+    const created = resource(body);
+    rows.push(created);
+    session.replays.set(replayKey, { draft, created });
+    return json(201, created);
+  }
+  if (url.pathname === "/v1/accounts" && request.method === "GET") {
+    const status = url.searchParams.get("status");
+    return json(200, {
+      items: status ? rows.filter((row) => row.status === status) : rows,
+      pageInfo: { hasNextPage: false },
+    });
+  }
+  const balance = /^\/v1\/accounts\/([^/]+)\/balance$/.exec(url.pathname);
+  const balanceId = balance?.[1];
+  const row = rows.find(({ id }) => id === balanceId);
+  if (!row || request.method !== "GET") return json(404, {});
+  const nativeBalance = {
+    currency: row.currency,
+    amountMinor: row.name === "Caja" ? "127500" : "0",
+  };
+  return json(200, {
+    accountId: row.id,
+    nativeBalance,
+    asOf: now,
+    baseCurrencyEquivalent: {
+      original: nativeBalance,
+      converted: nativeBalance,
+      rate: "1",
+      rateDate: now.slice(0, 10),
+      rateSource: "fixture",
+    },
+  });
 }
 
 createServer((request, reply) => {
