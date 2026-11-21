@@ -2,7 +2,12 @@
 
 import { createHash } from "node:crypto";
 import { redirect } from "next/navigation";
-import { ACCOUNT_TEXT, ACCOUNT_TYPES } from "@/lib/account-types";
+import { decimalToMinor } from "@/lib/account-money";
+import {
+  ACCOUNT_TEXT,
+  ACCOUNT_TYPES,
+  type AccountDraft,
+} from "@/lib/account-types";
 import {
   ACCOUNT_ETAG,
   accountScope,
@@ -12,6 +17,7 @@ import {
 } from "@/lib/accounts-gateway";
 import { requireProfile } from "@/lib/require-profile";
 import { requireSession } from "@/lib/session";
+import { calendarDate } from "@/lib/view-filters";
 import { WORKSPACE_ID } from "@/lib/workspace-gateway";
 
 function singleText(form: FormData, field: string) {
@@ -84,7 +90,7 @@ export async function createAccountAction(
   form: FormData,
 ): Promise<string | null> {
   const text = (field: string) => singleText(form, field) ?? "";
-  const draft = {
+  const draft: AccountDraft = {
     name: text("name"),
     type: text("type"),
     currency: text("currency").toUpperCase(),
@@ -98,6 +104,21 @@ export async function createAccountAction(
     !WORKSPACE_ID.test(submission.nonce)
   )
     return "Revisa el nombre, el tipo y la moneda.";
+  const optional = (field: string) =>
+    form.has(field) ? singleText(form, field) : "";
+  const opening = optional("openingBalance");
+  const date = optional("openingBalanceDate");
+  const amountMinor = opening ? decimalToMinor(opening, draft.currency) : null;
+  if (
+    opening === null ||
+    date === null ||
+    (opening && amountMinor === null) ||
+    (date && (!opening || !calendarDate(date)))
+  )
+    return "Revisa el saldo inicial y su fecha.";
+  if (amountMinor !== null)
+    draft.openingBalance = { amountMinor, currency: draft.currency };
+  if (date) draft.openingBalanceDate = date;
 
   const { accessToken } = await requireSession();
   const scope = await accountScope(accessToken);

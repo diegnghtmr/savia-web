@@ -13,6 +13,9 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
         <nav aria-label="Navegación principal">
           <Link href="/overview">Savia</Link>
           <Link href="/accounts">Cuentas</Link>
+          <Link href="/transactions" prefetch={false}>
+            Transacciones
+          </Link>
           <form action={signOutAction}>
             <button className="submit" type="submit">
               Cerrar sesión

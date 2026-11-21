@@ -81,6 +81,8 @@ async function handle(request, reply) {
             : [],
         replays: new Map(),
         accounts: new Map(),
+        openings: new Map(),
+        ledger: new Map(),
       });
       return json(200, {
         user,
@@ -148,8 +150,48 @@ async function handle(request, reply) {
         if (!session) return unauthorized();
         return handleAccounts(request, url, session, json);
       }
+      if (
+        /^GET \/v1\/(transactions(?:\/[^/]+)?|categories|payees|tags)$/.test(
+          route,
+        )
+      ) {
+        if (!session) return unauthorized();
+        const space = session.workspaces.find(
+          ({ id }) => id === request.headers["x-workspace-id"],
+        );
+        return space ? handleLedger(session, space, url, json) : json(403, {});
+      }
       return json(404, { message: "Unsupported fixture route" });
   }
+}
+
+function accountResource(draft, now) {
+  return {
+    id: randomUUID(),
+    status: "active",
+    includeInNetWorth: true,
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+    ...draft,
+  };
+}
+
+function accountsFor(session, space, now) {
+  if (!session.accounts.has(space.id)) {
+    session.accounts.set(
+      space.id,
+      space.name === "Casa"
+        ? [
+            accountResource(
+              { name: "Caja", type: "cash", currency: "COP" },
+              now,
+            ),
+          ]
+        : [],
+    );
+  }
+  return session.accounts.get(space.id);
 }
 
 async function handleAccounts(request, url, session, json) {
@@ -158,24 +200,7 @@ async function handleAccounts(request, url, session, json) {
   );
   if (!space) return json(403, { title: "Workspace access denied" });
   const now = new Date().toISOString();
-  const resource = (draft) => ({
-    id: randomUUID(),
-    status: "active",
-    includeInNetWorth: true,
-    version: 1,
-    createdAt: now,
-    updatedAt: now,
-    ...draft,
-  });
-  if (!session.accounts.has(space.id)) {
-    session.accounts.set(
-      space.id,
-      space.name === "Casa"
-        ? [resource({ name: "Caja", type: "cash", currency: "COP" })]
-        : [],
-    );
-  }
-  const rows = session.accounts.get(space.id);
+  const rows = accountsFor(session, space, now);
   if (url.pathname === "/v1/accounts" && request.method === "POST") {
     const key = request.headers["idempotency-key"];
     if (!uuid.test(key)) return json(400, { title: "Missing idempotency key" });
@@ -185,7 +210,10 @@ async function handleAccounts(request, url, session, json) {
     const replay = session.replays.get(replayKey);
     if (replay)
       return replay.draft === draft ? json(201, replay.created) : json(409, {});
-    const created = resource(body);
+    const { openingBalance, openingBalanceDate, ...fields } = body;
+    const created = accountResource(fields, now);
+    if (openingBalance)
+      session.openings.set(created.id, { openingBalance, openingBalanceDate });
     rows.push(created);
     session.replays.set(replayKey, { draft, created });
     return json(201, created);
@@ -231,7 +259,7 @@ async function handleAccounts(request, url, session, json) {
     return json(200, closed);
   }
   if (request.method !== "GET" || operation !== "balance") return json(404, {});
-  const nativeBalance = {
+  const nativeBalance = session.openings.get(row.id)?.openingBalance ?? {
     currency: row.currency,
     amountMinor: space.name === "Casa" && index === 0 ? "127500" : "0",
   };
@@ -247,6 +275,78 @@ async function handleAccounts(request, url, session, json) {
       rate: "1",
       rateDate: now.slice(0, 10),
       rateSource: "fixture",
+    },
+  });
+}
+
+function handleLedger(session, space, url, json) {
+  const [account] = accountsFor(session, space, new Date().toISOString());
+  const named = (name) => ({ id: randomUUID(), name });
+  if (!session.ledger.has(space.id)) {
+    const category = named("Alimentación"),
+      payee = named("Mercado"),
+      tag = named("Familia");
+    const transactions =
+      space.name === "Casa"
+        ? [
+            ["Mercado sin confirmar", "2026-01-31", "pending"],
+            ["Mercado de hoy", "2026-01-25", "confirmed"],
+            ["Mercado anterior", "2026-01-15", "confirmed"],
+          ].map(([description, day, status]) => ({
+            id: randomUUID(),
+            accountId: account.id,
+            categoryId: category.id,
+            payeeId: payee.id,
+            tagIds: [tag.id],
+            type: "expense",
+            status,
+            description,
+            amount: { amountMinor: "123456", currency: "COP" },
+            notes: "Pago en efectivo",
+            occurredAt: `${day}T12:00:00Z`,
+            createdAt: `${day}T12:00:00Z`,
+            updatedAt: `${day}T12:00:00Z`,
+            version: 1,
+          }))
+        : [];
+    session.ledger.set(space.id, {
+      categories: [category],
+      payees: [payee],
+      tags: [tag],
+      transactions,
+    });
+  }
+  const ledger = session.ledger.get(space.id);
+  const [, , resource, id] = url.pathname.split("/");
+  if (id) {
+    const row = ledger.transactions.find((entry) => entry.id === id);
+    return row ? json(200, row, { etag: '"1"' }) : json(404, {});
+  }
+  const get = (key) => url.searchParams.get(key);
+  const rows = ledger[resource];
+  if (resource !== "transactions")
+    return json(200, { items: rows, pageInfo: { hasNextPage: false } });
+  const results = rows.filter(
+    (row) =>
+      ["accountId", "categoryId", "status"].every(
+        (key) => !get(key) || row[key] === get(key),
+      ) &&
+      (!get("from") || row.occurredAt.slice(0, 10) >= get("from")) &&
+      (!get("to") || row.occurredAt.slice(0, 10) <= get("to")) &&
+      (!get("query") ||
+        row.description.toLowerCase().includes(get("query").toLowerCase())),
+  );
+  const cursor = (row) => encode([row.createdAt, row.id]);
+  const offset = get("cursor")
+    ? results.findIndex((row) => cursor(row) === get("cursor")) + 1
+    : 0;
+  if (get("cursor") && !offset) return json(400, {});
+  const hasNextPage = results.length > offset + 1;
+  return json(200, {
+    items: results.slice(offset, offset + 1),
+    pageInfo: {
+      hasNextPage,
+      nextCursor: hasNextPage ? cursor(results[offset]) : null,
     },
   });
 }

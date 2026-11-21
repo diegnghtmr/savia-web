@@ -15,6 +15,8 @@ export function AccountForm({
   const [name, setName] = useState("");
   const [currency, setCurrency] = useState("");
   const [type, setType] = useState("cash");
+  const [opening, setOpening] = useState("");
+  const [date, setDate] = useState("");
   const [error, submit, pending] = useActionState(
     createAccountAction.bind(null, submission),
     null,
@@ -63,6 +65,31 @@ export function AccountForm({
           required
           value={currency}
           onChange={(e) => setCurrency(e.target.value)}
+        />
+      </div>
+      <div className="field">
+        <label htmlFor="opening-balance">Saldo inicial (opcional)</label>
+        <input
+          id="opening-balance"
+          name="openingBalance"
+          inputMode="decimal"
+          aria-describedby="opening-hint"
+          value={opening}
+          onChange={(event) => setOpening(event.target.value)}
+        />
+        <p className="hint" id="opening-hint">
+          Escribe el importe en la moneda de la cuenta, sin separadores de
+          miles.
+        </p>
+      </div>
+      <div className="field">
+        <label htmlFor="opening-date">Fecha del saldo inicial (opcional)</label>
+        <input
+          id="opening-date"
+          name="openingBalanceDate"
+          type="date"
+          value={date}
+          onChange={(event) => setDate(event.target.value)}
         />
       </div>
       <button className="submit" type="submit" disabled={pending}>

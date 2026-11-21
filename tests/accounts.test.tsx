@@ -104,6 +104,50 @@ it("rejects ambiguous or missing fields before reading the session", async () =>
   expect(fetchImpl).not.toHaveBeenCalled();
 });
 
+it.each([
+  { status: ["active", "closed"] },
+  { status: "unknown" },
+  { cursor: ["one", "two"] },
+  { cursor: "" },
+])(
+  "rejects invalid list parameters before querying accounts: %o",
+  async (query) => {
+    fetchImpl.mockResolvedValueOnce(Response.json({ id }));
+    render(await AccountsPage({ searchParams: Promise.resolve(query) }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Revisa los filtros.");
+    expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([
+      "https://backend.test/savia/v1/me",
+    ]);
+  },
+);
+
+it("rejects invalid opening balance fields before reading the session", async () => {
+  const duplicate = draft();
+  duplicate.append("openingBalance", "1.00");
+  duplicate.append("openingBalance", "2.00");
+  const file = draft();
+  file.set("openingBalanceDate", new File(["2026-11-20"], "date.txt"));
+  for (const [amount, date] of [
+    ["1.001", ""],
+    ["92233720368547758.08", ""],
+    ["1.00", "2026-02-30"],
+    ["", "2026-11-20"],
+  ]) {
+    const form = draft();
+    form.set("openingBalance", amount);
+    form.set("openingBalanceDate", date);
+    await expect(createAccountAction(submission, null, form)).resolves.toBe(
+      "Revisa el saldo inicial y su fecha.",
+    );
+  }
+  for (const form of [duplicate, file])
+    await expect(createAccountAction(submission, null, form)).resolves.toBe(
+      "Revisa el saldo inicial y su fecha.",
+    );
+  expect(requireSession).not.toHaveBeenCalled();
+  expect(fetchImpl).not.toHaveBeenCalled();
+});
+
 it("does not submit a draft after the active workspace changes", async () => {
   fetchImpl.mockResolvedValueOnce(page([{ id, name: "Casa" }]));
   const stale = { ...submission, workspaceId: "changed" };

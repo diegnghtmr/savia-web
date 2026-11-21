@@ -10,6 +10,7 @@ import {
 } from "@/lib/accounts-gateway";
 import { requireProfile } from "@/lib/require-profile";
 import { money } from "@/lib/account-money";
+import { viewFilters } from "@/lib/view-filters";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Cuentas" };
@@ -22,6 +23,10 @@ export default async function AccountsPage({
   const profile = await requireProfile();
   if (profile.kind === "failed")
     return <p role="alert">No pudimos consultar tu perfil.</p>;
+  const filters = viewFilters(await searchParams, {
+    status: (value) => Object.hasOwn(ACCOUNT_STATUSES, value),
+  });
+  if (!filters) return <InvalidFilters />;
   const scope = await accountScope(profile.accessToken);
   if (scope.kind === "unauthenticated") redirect("/sign-in");
   if (scope.kind === "failed")
@@ -33,15 +38,15 @@ export default async function AccountsPage({
       </Link>
     );
 
-  const query = await searchParams;
-  const status =
-    typeof query.status === "string" &&
-    Object.hasOwn(ACCOUNT_STATUSES, query.status)
-      ? (query.status as AccountStatus)
-      : undefined;
-  const cursor = typeof query.cursor === "string" ? query.cursor : undefined;
-  const result = await listAccounts(scope.target, status, cursor);
+  const status = filters.get("status") as AccountStatus | null;
+  const result = await listAccounts(
+    scope.target,
+    status ?? undefined,
+    filters.get("cursor") ?? undefined,
+  );
   if (result.kind === "unauthenticated") redirect("/sign-in");
+  if (result.kind === "failed" && result.status === 400)
+    return <InvalidFilters />;
   if (result.kind === "failed")
     return (
       <p role="alert">No pudimos cargar las cuentas. Vuelve a intentarlo.</p>
@@ -116,5 +121,13 @@ export default async function AccountsPage({
         workspaceId={scope.target.workspaceId}
       />
     </>
+  );
+}
+
+function InvalidFilters() {
+  return (
+    <p role="alert">
+      Revisa los filtros. <Link href="/accounts">Limpiar filtros</Link>
+    </p>
   );
 }

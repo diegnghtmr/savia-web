@@ -1,3 +1,29 @@
+function currencyFormat(currency: string) {
+  return new Intl.NumberFormat("es-CO", {
+    style: "currency",
+    currency,
+    currencyDisplay: "code",
+    // TRD §22.1 uses centavos for COP even when Intl defaults to whole pesos.
+    ...(currency === "COP" && { minimumFractionDigits: 2 }),
+  });
+}
+
+export function decimalToMinor(decimal: string, currency: string) {
+  const parts = /^(-?)(\d+)(?:[.,](\d+))?$/.exec(decimal);
+  if (!parts) return null;
+  const [, sign, whole, fraction = ""] = parts;
+  const scale =
+    currencyFormat(currency).resolvedOptions().maximumFractionDigits ?? 0;
+  if (fraction.length > scale) return null;
+  const digits = `${whole}${fraction.padEnd(scale, "0")}`.replace(
+    /^0+(?=\d)/,
+    "",
+  );
+  if (digits.length > 19) return null;
+  const minor = BigInt(`${sign}${digits}`);
+  return BigInt.asIntN(64, minor) === minor ? minor.toString() : null;
+}
+
 export function money({
   amountMinor,
   currency,
@@ -5,13 +31,7 @@ export function money({
   amountMinor: string;
   currency: string;
 }) {
-  const format = new Intl.NumberFormat("es-CO", {
-    style: "currency",
-    currency,
-    currencyDisplay: "code",
-    // TRD §22.1 uses centavos for COP even when Intl defaults to whole pesos.
-    ...(currency === "COP" && { minimumFractionDigits: 2 }),
-  });
+  const format = currencyFormat(currency);
   const scale = format.resolvedOptions().maximumFractionDigits ?? 0;
   const digits = amountMinor.replace(/^-/, "").padStart(scale + 1, "0");
   const decimal = scale

@@ -17,9 +17,18 @@ test("lists and creates accounts in the active workspace", async ({ page }) => {
   await page.getByLabel("Nombre de la cuenta").fill("Vacaciones");
   await page.getByLabel("Tipo de cuenta").selectOption("savings");
   await page.getByLabel("Moneda").fill("COP");
+  await page
+    .getByLabel("Saldo inicial (opcional)", { exact: true })
+    .fill("9007199254740993.01");
+  await page
+    .getByLabel("Fecha del saldo inicial (opcional)")
+    .fill("2026-11-20");
   await page.getByRole("button", { name: "Crear cuenta" }).click();
   await expect(page).toHaveURL("/accounts");
   await expect(page.getByRole("heading", { name: "Vacaciones" })).toBeVisible();
+  await expect(
+    page.getByText(/Saldo confirmado: COP\s9\.007\.199\.254\.740\.993,01/),
+  ).toBeVisible();
 });
 
 test("edits, archives and confirms closure from account detail", async ({

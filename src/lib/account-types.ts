@@ -16,7 +16,13 @@ export const ACCOUNT_STATUSES = {
   closed: "Cerrada",
 };
 export type AccountStatus = keyof typeof ACCOUNT_STATUSES;
-export type AccountDraft = { name: string; type: string; currency: string };
+export type AccountDraft = {
+  name: string;
+  type: string;
+  currency: string;
+  openingBalance?: { amountMinor: string; currency: string };
+  openingBalanceDate?: string;
+};
 export const ACCOUNT_TEXT = [
   ["name", "Nombre de la cuenta", 120],
   ["institution", "Institución", 120],
