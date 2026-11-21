@@ -24,11 +24,12 @@ export async function selectWorkspace(
   _previous: string | null,
   form: FormData,
 ): Promise<string | null> {
-  const { accessToken } = await requireSession();
+  // Validate the submission before touching the session (no refresh or cookie write).
   const ids = form.getAll("workspaceId");
   const [id] = ids;
   if (ids.length !== 1 || typeof id !== "string" || !WORKSPACE_ID.test(id))
     return unavailable;
+  const { accessToken } = await requireSession();
   return activateWorkspace(accessToken, id);
 }
 
@@ -51,7 +52,6 @@ export async function createWorkspaceAction(
   _previous: string | null,
   form: FormData,
 ): Promise<string | null> {
-  const { accessToken } = await requireSession();
   const name = singleText(form, "name")?.trim() ?? "";
   const baseCurrency =
     singleText(form, "baseCurrency")?.trim().toUpperCase() ?? "";
@@ -63,6 +63,8 @@ export async function createWorkspaceAction(
   )
     return "Revisa el nombre y la moneda base del espacio.";
 
+  // Only a valid draft may touch the session (which can refresh and rewrite cookies).
+  const { accessToken } = await requireSession();
   const draft = { name, baseCurrency };
   // UUIDv8 from the form's nonce and normalized payload. Retries retain it;
   // editing a field uses a different key for the new logical request.
