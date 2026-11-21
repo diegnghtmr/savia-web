@@ -3,7 +3,6 @@ import { afterEach, beforeEach, vi } from "vitest";
 import { createServerClient } from "@supabase/ssr";
 import { redirect } from "next/navigation";
 import Layout from "@/app/(workspace)/layout";
-import OverviewPage from "@/app/(workspace)/overview/page";
 import { signInAction, signUpAction } from "@/app/_actions/auth";
 import { signIn, signUp } from "@/lib/auth-gateway";
 
@@ -44,7 +43,7 @@ afterEach(() => {
 });
 
 async function appEntry() {
-  return Layout({ children: <OverviewPage /> });
+  return Layout({ children: <h1>Vista general</h1> });
 }
 
 it("sends successful sign-in through the protected overview", async () => {
