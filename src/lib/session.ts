@@ -61,7 +61,7 @@ export interface SessionReader {
 
 /**
  * Adapts a Next.js cookie store to the Supabase cookie contract and pins every
- * written cookie to `httpOnly`.
+ * written cookie to the web session's security policy.
  *
  * `@supabase/ssr` defaults `httpOnly` to `false`, which would put the session
  * credential inside reach of browser JavaScript. ADR-0018 forbids that, so the
@@ -84,7 +84,13 @@ export function httpOnlyCookieMethods(
     ): void => {
       for (const { name, value, options: cookieOptions } of cookiesToSet) {
         try {
-          store.set(name, value, { ...cookieOptions, httpOnly: true });
+          store.set(name, value, {
+            ...cookieOptions,
+            httpOnly: true,
+            sameSite: "lax",
+            path: "/",
+            ...(process.env.NODE_ENV === "production" && { secure: true }),
+          });
         } catch (error) {
           if (!tolerateWriteFailure) throw error;
           // Server Components render with a read-only cookie store. A refresh

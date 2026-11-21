@@ -31,6 +31,7 @@ export async function getCurrentUser(
     const response = await ports.fetchImpl(new URL("v1/me", base).href, {
       method: "GET",
       cache: "no-store",
+      redirect: "manual",
       headers: {
         authorization: `Bearer ${accessToken}`,
         accept: "application/json",

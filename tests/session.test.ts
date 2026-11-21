@@ -131,7 +131,7 @@ describe("the session cookie writer", () => {
       {
         name: "sb-project-auth-token.1",
         value: "second",
-        options: { httpOnly: true, path: "/" },
+        options: { httpOnly: true, path: "/", sameSite: "lax" },
       },
     ]);
   });
@@ -234,8 +234,47 @@ describe("the composed session entry point", () => {
       [{ name: "sb", value: "v", options: { httpOnly: false } }],
       {},
     );
-    expect(written).toEqual([{ name: "sb", options: { httpOnly: true } }]);
+    expect(written).toEqual([
+      { name: "sb", options: { httpOnly: true, path: "/", sameSite: "lax" } },
+    ]);
   });
+
+  it.each([sessionClient, writableSessionClient])(
+    "pins production cookie flags at the Supabase boundary",
+    async (client) => {
+      vi.stubEnv("NODE_ENV", "production");
+      const set = vi.fn();
+      vi.mocked(cookies).mockResolvedValue({
+        getAll: () => [],
+        set,
+      } as unknown as Awaited<ReturnType<typeof cookies>>);
+      await client();
+      const [, , options] = vi.mocked(createServerClient).mock.calls[0]!;
+      options.cookies.setAll!(
+        [
+          {
+            name: "sb-auth",
+            value: "v",
+            options: {
+              httpOnly: false,
+              secure: false,
+              sameSite: "none",
+              path: "/api",
+              maxAge: 123,
+            },
+          },
+        ],
+        {},
+      );
+      expect(set).toHaveBeenCalledExactlyOnceWith("sb-auth", "v", {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 123,
+      });
+    },
+  );
 
   it("binds the write-strict cookie adapter to the Supabase client", async () => {
     vi.mocked(cookies).mockResolvedValue({

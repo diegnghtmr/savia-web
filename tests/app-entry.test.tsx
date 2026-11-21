@@ -2,12 +2,15 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 import { createServerClient } from "@supabase/ssr";
 import { redirect } from "next/navigation";
-import Layout from "@/app/(workspace)/layout";
+import OverviewPage from "@/app/(workspace)/overview/page";
 import { signInAction, signUpAction } from "@/app/_actions/auth";
 import { signIn, signUp } from "@/lib/auth-gateway";
+import { getCurrentUser } from "@/lib/profile-gateway";
 
 vi.mock("@supabase/ssr", () => ({ createServerClient: vi.fn() }));
-vi.mock("next/headers", () => ({ cookies: vi.fn() }));
+vi.mock("next/headers", () => ({
+  cookies: async () => ({ get: () => undefined }),
+}));
 vi.mock("next/navigation", () => ({
   redirect: vi.fn((path: string) => {
     throw new Error(`redirect:${path}`);
@@ -42,8 +45,16 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+const profileUrl = "https://backend.test/savia/v1/me";
+const workspaceUrl = "https://backend.test/savia/v1/workspaces";
+const workspaces = () =>
+  Response.json({
+    items: [{ id: "80000000-0000-4000-8000-000000000008", name: "Casa" }],
+    pageInfo: { hasNextPage: false },
+  });
+
 async function appEntry() {
-  return Layout({ children: <h1>Vista general</h1> });
+  return OverviewPage();
 }
 
 it("sends successful sign-in through the protected overview", async () => {
@@ -83,22 +94,63 @@ it("redirects when the session cookie is absent without calling the backend", as
 });
 
 it("renders the protected overview for an onboarded user", async () => {
-  fetchImpl.mockResolvedValue(Response.json({ id: "profile-id" }));
+  fetchImpl
+    .mockResolvedValueOnce(Response.json({ id: "profile-id" }))
+    .mockResolvedValueOnce(workspaces());
   render(await appEntry());
 
-  expect(screen.getByRole("heading", { name: "Vista general" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Casa" })).toBeVisible();
   expect(redirect).not.toHaveBeenCalled();
-  expect(fetchImpl).toHaveBeenCalledExactlyOnceWith(
-    "https://backend.test/savia/v1/me",
-    {
-      method: "GET",
-      cache: "no-store",
-      headers: {
-        authorization: "Bearer test-token",
-        accept: "application/json",
-      },
+  expect(fetchImpl).toHaveBeenNthCalledWith(1, profileUrl, {
+    method: "GET",
+    cache: "no-store",
+    redirect: "manual",
+    headers: {
+      authorization: "Bearer test-token",
+      accept: "application/json",
     },
+  });
+  expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([
+    profileUrl,
+    workspaceUrl,
+  ]);
+});
+
+it("checks the profile again when only the overview page rerenders", async () => {
+  fetchImpl.mockImplementation(async (url) => {
+    if (url === workspaceUrl) return workspaces();
+    return Response.json({ id: "profile-id" });
+  });
+  const { rerender } = render(await appEntry());
+  expect(screen.getByRole("heading", { name: "Casa" })).toBeVisible();
+  fetchImpl.mockClear();
+  fetchImpl.mockImplementation(async (url) =>
+    url === profileUrl ? new Response(null, { status: 503 }) : workspaces(),
   );
+  rerender(await appEntry());
+  expect(
+    screen.getByRole("heading", { name: "No pudimos cargar Savia" }),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("heading", { name: "Casa" }),
+  ).not.toBeInTheDocument();
+  expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([profileUrl]);
+});
+
+it("does not follow a profile redirect whose destination is missing", async () => {
+  fetchImpl.mockImplementation(
+    async (_url, init) =>
+      new Response(
+        null,
+        init?.redirect === "manual"
+          ? { status: 302, headers: { location: "/maintenance" } }
+          : { status: 404 },
+      ),
+  );
+  await expect(getCurrentUser("test-token")).resolves.toEqual({
+    kind: "failed",
+  });
+  expect(fetchImpl).toHaveBeenCalledOnce();
 });
 
 it.each([
@@ -107,6 +159,7 @@ it.each([
 ])("routes profile status %s to %s", async (status, path) => {
   fetchImpl.mockResolvedValue(new Response(null, { status }));
   await expect(appEntry()).rejects.toThrow(`redirect:${path}`);
+  expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([profileUrl]);
 });
 
 it.each([503, 200, "network failure"])(
@@ -131,5 +184,6 @@ it.each([503, 200, "network failure"])(
       screen.queryByRole("heading", { name: "Vista general" }),
     ).not.toBeInTheDocument();
     expect(redirect).not.toHaveBeenCalled();
+    expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([profileUrl]);
   },
 );

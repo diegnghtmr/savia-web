@@ -1,7 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import { cookies } from "next/headers";
 import OverviewPage from "@/app/(workspace)/overview/page";
-import { selectWorkspace } from "@/app/_actions/workspace";
+import {
+  createWorkspaceAction,
+  selectWorkspace,
+} from "@/app/_actions/workspace";
 import { requireSession } from "@/lib/session";
 
 vi.mock("next/headers", () => ({ cookies: vi.fn() }));
@@ -11,6 +14,9 @@ vi.mock("next/navigation", () => ({
   },
 }));
 vi.mock("@/lib/session", () => ({ requireSession: vi.fn() }));
+vi.mock("@/lib/profile-gateway", () => ({
+  getCurrentUser: async () => ({ kind: "onboarded" }),
+}));
 
 const casa = { id: "01ec0000-0000-4000-9000-000000000001", name: "Casa" };
 const oficina = { id: "01ec0000-0000-4000-9000-000000000002", name: "Oficina" };
@@ -106,6 +112,20 @@ it("rejects a UUID outside the API's membership list without changing the cookie
   expect(store.set).not.toHaveBeenCalled();
 });
 
+it.each([{ ids: [] }, { ids: [casa.id, oficina.id] }])(
+  "rejects ambiguous or missing workspace ids before querying memberships",
+  async ({ ids }) => {
+    const form = new FormData();
+    for (const id of ids) form.append("workspaceId", id);
+    fetchImpl.mockResolvedValueOnce(page([casa]));
+    await expect(selectWorkspace(null, form)).resolves.toBe(
+      "Este espacio ya no está disponible.",
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(store.set).not.toHaveBeenCalled();
+  },
+);
+
 it("redirects an API-rejected session without storing the submitted id", async () => {
   fetchImpl.mockResolvedValueOnce(new Response(null, { status: 401 }));
   await expect(choose(casa.id)).rejects.toThrow("redirect:/sign-in");
@@ -124,7 +144,82 @@ it.each([
     fetchImpl.mockResolvedValueOnce(response());
     render(await OverviewPage());
     expect(screen.getByText(message)).toBeVisible();
+    const recovery = screen.queryByRole("button", { name: "Crear espacio" });
+    if (message === "No tienes espacios disponibles.") {
+      expect(recovery).toBeVisible();
+      expect(
+        screen.getByRole("textbox", { name: "Nombre del espacio" }),
+      ).toBeRequired();
+      expect(
+        screen.getByRole("textbox", { name: "Moneda base" }),
+      ).toBeRequired();
+    } else {
+      expect(recovery).not.toBeInTheDocument();
+    }
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(store.set).not.toHaveBeenCalled();
   },
 );
+
+const nonce = "80000000-0000-4000-8000-000000000001";
+function recover(name = " Casa ", currency = "cop") {
+  const form = new FormData();
+  form.set("name", name);
+  form.set("baseCurrency", currency);
+  return createWorkspaceAction(nonce, null, form);
+}
+
+it("reuses a UUID for normalized retries and selects only after membership is confirmed", async () => {
+  fetchImpl
+    .mockRejectedValueOnce(new Error("lost response"))
+    .mockResolvedValueOnce(Response.json(casa, { status: 201 }))
+    .mockResolvedValueOnce(page([casa]));
+
+  await expect(recover()).resolves.toBe(
+    "No pudimos crear el espacio. Vuelve a intentarlo.",
+  );
+  expect(store.set).not.toHaveBeenCalled();
+  await expect(recover("Casa", "COP")).rejects.toThrow("redirect:/overview");
+  const [url, request] = fetchImpl.mock.calls[0];
+  expect(url).toBe(listUrl);
+  expect(request?.method).toBe("POST");
+  const headers = new Headers(request?.headers);
+  expect(headers.get("authorization")).toBe("Bearer test-token");
+  expect(headers.get("idempotency-key")).toMatch(
+    /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/,
+  );
+  expect(request?.body).toBe('{"name":"Casa","baseCurrency":"COP"}');
+  expect(fetchImpl.mock.calls[1]).toEqual(fetchImpl.mock.calls[0]);
+  expect(fetchImpl.mock.calls[2][1]?.method).toBe("GET");
+  expect(fetchImpl.mock.invocationCallOrder[2]).toBeLessThan(
+    store.set.mock.invocationCallOrder[0],
+  );
+  expect(store.set).toHaveBeenCalledExactlyOnceWith(
+    "savia-workspace",
+    casa.id,
+    expect.objectContaining({ httpOnly: true }),
+  );
+});
+
+it("uses a new key when the draft changes and never saves unconfirmed membership", async () => {
+  fetchImpl
+    .mockResolvedValueOnce(Response.json(casa, { status: 201 }))
+    .mockResolvedValueOnce(page([]))
+    .mockResolvedValueOnce(new Response(null, { status: 422 }));
+  await expect(recover()).resolves.toBe("Este espacio ya no está disponible.");
+  await expect(recover("Oficina")).resolves.toBe(
+    "No pudimos crear el espacio. Vuelve a intentarlo.",
+  );
+  const key = (index: number) =>
+    new Headers(fetchImpl.mock.calls[index][1]?.headers).get("idempotency-key");
+  expect(key(0)).not.toBe(key(2));
+  expect(store.set).not.toHaveBeenCalled();
+});
+
+it("rejects an invalid draft without writing a workspace or cookie", async () => {
+  await expect(recover(" ", "12")).resolves.toBe(
+    "Revisa el nombre y la moneda base del espacio.",
+  );
+  expect(fetchImpl).not.toHaveBeenCalled();
+  expect(store.set).not.toHaveBeenCalled();
+});
