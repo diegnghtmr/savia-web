@@ -1,5 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { signInAs } from "./auth-helpers";
 import { E2E_USER as NOT_ONBOARDED_USER } from "./fixtures";
+import { ONBOARDED_USER } from "./fixtures/accounts.mjs";
+import { test } from "./fixtures/browser";
 
 test.describe("authentication flow", () => {
   test("a not-yet-onboarded user signs in with an httpOnly cookie and no browser API requests", async ({
@@ -45,7 +48,12 @@ test.describe("authentication flow", () => {
     );
     expect(authCookies.length).toBeGreaterThan(0);
     for (const authCookie of authCookies) {
-      expect(authCookie.httpOnly).toBe(true);
+      expect(authCookie).toMatchObject({
+        httpOnly: true,
+        secure: true,
+        sameSite: "Lax",
+        path: "/",
+      });
       const documentCookie = await page.evaluate(() => document.cookie);
       expect(documentCookie).not.toContain(authCookie.name);
     }
@@ -67,9 +75,13 @@ test.describe("authentication flow", () => {
     }
   });
 
-  test("sign-up with a new random email yields real confirmationRequired state from service", async ({
-    page,
-  }) => {
+  test("an onboarded user lands on the overview", async ({ page }) => {
+    await signInAs(page, ONBOARDED_USER.email, ONBOARDED_USER.password);
+    await expect(page).toHaveURL("/overview");
+    await expect(page.getByRole("heading", { name: "Casa" })).toBeVisible();
+  });
+
+  test("sign-up prompts for email confirmation", async ({ page }) => {
     const randomEmail = `test-user-${Date.now()}-${Math.floor(Math.random() * 10000)}@savia.local`;
     await page.goto("/sign-up", { waitUntil: "domcontentloaded" });
     await expect(

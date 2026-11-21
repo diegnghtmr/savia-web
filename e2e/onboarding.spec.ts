@@ -1,9 +1,11 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
 import { sweepTouchTargets } from "./touch-target";
 import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
 import { signInAs } from "./auth-helpers";
 import { E2E_USER } from "./fixtures";
+import { RECOVERY_USER } from "./fixtures/accounts.mjs";
+import { test } from "./fixtures/browser";
 
 const require = createRequire(import.meta.url);
 const axe = await readFile(require.resolve("axe-core"), "utf8");
@@ -67,11 +69,23 @@ test("the onboarding form is accessible, responsive, and quiet until submitted",
   expect(runtime).toEqual([]);
 });
 
-test("the home page offers the way in", async ({ page }) => {
-  await signInAs(page, E2E_USER.email, E2E_USER.password);
-  await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByRole("link", { name: "Crear mi espacio" }).click();
-  await expect(
-    page.getByRole("heading", { level: 1, name: "Crea tu espacio" }),
-  ).toBeVisible();
+test("an onboarded user without workspaces can recover from the overview", async ({
+  page,
+  context,
+}) => {
+  await signInAs(page, RECOVERY_USER.email, RECOVERY_USER.password);
+  await expect(page).toHaveURL("/overview");
+  await expect(page.getByText("No tienes espacios disponibles.")).toBeVisible();
+
+  await page.getByLabel("Nombre del espacio").fill("Estudio");
+  await page.getByLabel("Moneda base").fill("cop");
+  await page.getByRole("button", { name: "Crear espacio" }).click();
+
+  await expect(page).toHaveURL("/overview");
+  await expect(page.getByRole("heading", { name: "Estudio" })).toBeVisible();
+  expect(await context.cookies()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ name: "savia-workspace", httpOnly: true }),
+    ]),
+  );
 });

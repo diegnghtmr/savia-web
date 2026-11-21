@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./fixtures/browser";
 import { sweepTouchTargets } from "./touch-target";
 import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
