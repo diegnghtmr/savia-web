@@ -46,9 +46,9 @@ async function readJson(request) {
 async function handle(request, reply) {
   const url = new URL(request.url, "http://127.0.0.1:4010");
   const route = `${request.method} ${url.pathname}`;
-  const json = (status, body) =>
+  const json = (status, body, headers) =>
     reply
-      .writeHead(status, { "content-type": "application/json" })
+      .writeHead(status, { "content-type": "application/json", ...headers })
       .end(JSON.stringify(body));
   const bearer = request.headers.authorization;
   const session = sessions.get(bearer);
@@ -197,17 +197,49 @@ async function handleAccounts(request, url, session, json) {
       pageInfo: { hasNextPage: false },
     });
   }
-  const balance = /^\/v1\/accounts\/([^/]+)\/balance$/.exec(url.pathname);
-  const balanceId = balance?.[1];
-  const row = rows.find(({ id }) => id === balanceId);
-  if (!row || request.method !== "GET") return json(404, {});
+  const [, accountId, operation] =
+    /^\/v1\/accounts\/([^/]+)(?:\/(balance|close))?$/.exec(url.pathname) ?? [];
+  const index = rows.findIndex(({ id }) => id === accountId);
+  const row = rows[index];
+  if (!row) return json(404, {});
+  const etag = (account) => ({ etag: `"${account.version}"` });
+  if (request.method === "GET" && !operation) return json(200, row, etag(row));
+  const replace = (patch) =>
+    (rows[index] = {
+      ...row,
+      ...patch,
+      version: row.version + 1,
+      updatedAt: now,
+    });
+  if (request.method === "PATCH" && !operation) {
+    if (row.status === "closed") return json(403, {});
+    if (request.headers["if-match"] !== etag(row).etag) return json(412, {});
+    const updated = replace(await readJson(request));
+    return json(200, updated, etag(updated));
+  }
+  if (request.method === "POST" && operation === "close") {
+    const key = request.headers["idempotency-key"];
+    if (!uuid.test(key)) return json(400, {});
+    const replayKey = `close:${space.id}:${key}`;
+    const replay = session.replays.get(replayKey);
+    if (replay)
+      return replay.id === accountId ? json(200, replay) : json(409, {});
+    if (row.status === "closed") return json(409, {});
+    if (request.headers["if-match"] !== etag(row).etag) return json(412, {});
+    const closed = replace({ status: "closed" });
+    session.replays.set(replayKey, closed);
+    return json(200, closed);
+  }
+  if (request.method !== "GET" || operation !== "balance") return json(404, {});
   const nativeBalance = {
     currency: row.currency,
-    amountMinor: row.name === "Caja" ? "127500" : "0",
+    amountMinor: space.name === "Casa" && index === 0 ? "127500" : "0",
   };
   return json(200, {
     accountId: row.id,
     nativeBalance,
+    pendingBalance: { currency: row.currency, amountMinor: "0" },
+    reconciledBalance: nativeBalance,
     asOf: now,
     baseCurrencyEquivalent: {
       original: nativeBalance,

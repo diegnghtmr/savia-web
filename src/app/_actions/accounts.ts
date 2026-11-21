@@ -2,20 +2,88 @@
 
 import { createHash } from "node:crypto";
 import { redirect } from "next/navigation";
-import { ACCOUNT_TYPES } from "@/lib/account-types";
-import { accountScope, createAccount } from "@/lib/accounts-gateway";
+import { ACCOUNT_TEXT, ACCOUNT_TYPES } from "@/lib/account-types";
+import {
+  ACCOUNT_ETAG,
+  accountScope,
+  closeAccount,
+  createAccount,
+  updateAccount,
+} from "@/lib/accounts-gateway";
+import { requireProfile } from "@/lib/require-profile";
 import { requireSession } from "@/lib/session";
 import { WORKSPACE_ID } from "@/lib/workspace-gateway";
+
+function singleText(form: FormData, field: string) {
+  const [value, ...extras] = form.getAll(field);
+  return typeof value === "string" && !extras.length ? value.trim() : null;
+}
+
+export async function changeAccountAction(
+  submission: {
+    accountId: string;
+    workspaceId: string;
+    etag: string;
+    closeKey?: string;
+  },
+  _previous: string | null,
+  form: FormData,
+): Promise<string | null> {
+  const { accountId, workspaceId, etag, closeKey } = submission;
+  const invalid = "Revisa los datos de la cuenta.";
+  if (!WORKSPACE_ID.test(accountId) || !ACCOUNT_ETAG.test(etag)) return invalid;
+  const draft: Record<string, string | boolean | null> = {};
+  if (closeKey !== undefined) {
+    if (!WORKSPACE_ID.test(closeKey) || singleText(form, "confirm") !== "yes")
+      return "Confirma el cierre de la cuenta.";
+  } else {
+    for (const [field, , max] of ACCOUNT_TEXT) {
+      const value = singleText(form, field);
+      if (
+        value === null ||
+        value.length > max ||
+        value.includes("\0") ||
+        (field === "name" && !value)
+      )
+        return invalid;
+      draft[field] = value || null;
+    }
+    const status = singleText(form, "status");
+    const netWorth = singleText(form, "includeInNetWorth");
+    if (
+      (status !== "active" && status !== "archived") ||
+      (netWorth !== "true" && netWorth !== "false")
+    )
+      return invalid;
+    Object.assign(draft, { status, includeInNetWorth: netWorth === "true" });
+  }
+  const profile = await requireProfile();
+  if (profile.kind === "failed") return "No pudimos consultar tu perfil.";
+  const scope = await accountScope(profile.accessToken);
+  if (scope.kind === "unauthenticated") redirect("/sign-in");
+  if (scope.kind === "failed") return "No pudimos verificar el espacio activo.";
+  if (scope.kind === "empty" || scope.target.workspaceId !== workspaceId)
+    return "El espacio activo cambió. Vuelve a Cuentas.";
+  const result = closeKey
+    ? await closeAccount(scope.target, accountId, etag, closeKey)
+    : await updateAccount(scope.target, accountId, etag, draft);
+  if (result.kind === "unauthenticated") redirect("/sign-in");
+  if (result.kind === "failed") {
+    if (result.status === 412)
+      return "La cuenta cambió. Recarga la página antes de volver a intentarlo.";
+    if (result.status === 409 && closeKey)
+      return "No pudimos cerrar la cuenta. Revisa su estado y los movimientos pendientes.";
+    return "No pudimos guardar el cambio. Vuelve a intentarlo.";
+  }
+  redirect(`/accounts/${accountId}`);
+}
 
 export async function createAccountAction(
   submission: { nonce: string; workspaceId: string },
   _previous: string | null,
   form: FormData,
 ): Promise<string | null> {
-  const text = (field: string) => {
-    const [value, ...extras] = form.getAll(field);
-    return typeof value === "string" && !extras.length ? value.trim() : "";
-  };
+  const text = (field: string) => singleText(form, field) ?? "";
   const draft = {
     name: text("name"),
     type: text("type"),

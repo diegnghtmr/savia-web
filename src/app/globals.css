@@ -340,6 +340,7 @@ a:focus-visible {
 }
 
 .field input,
+.field textarea,
 .field select {
   min-height: var(--savia-touch-min);
   padding: 0.5rem 0.75rem;

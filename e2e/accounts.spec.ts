@@ -12,10 +12,45 @@ test("lists and creates accounts in the active workspace", async ({ page }) => {
   await page.getByLabel("Estado").selectOption("archived");
   await page.getByRole("button", { name: "Filtrar" }).click();
   await expect(page.getByText("No hay cuentas en esta página.")).toBeVisible();
+  // The GET filter reloads the document; wait for the controlled form to hydrate.
+  await page.waitForLoadState("networkidle");
   await page.getByLabel("Nombre de la cuenta").fill("Vacaciones");
   await page.getByLabel("Tipo de cuenta").selectOption("savings");
   await page.getByLabel("Moneda").fill("COP");
   await page.getByRole("button", { name: "Crear cuenta" }).click();
   await expect(page).toHaveURL("/accounts");
   await expect(page.getByRole("heading", { name: "Vacaciones" })).toBeVisible();
+});
+
+test("edits, archives and confirms closure from account detail", async ({
+  page,
+}) => {
+  await signInAs(page, ONBOARDED_USER.email, ONBOARDED_USER.password);
+  await page.getByRole("link", { name: "Cuentas" }).click();
+  await page.getByRole("link", { name: "Caja" }).click({ timeout: 3000 });
+  await expect(page.getByText("Saldo pendiente")).toBeVisible();
+  await expect(page.getByText("Saldo disponible").locator("+ dd")).toHaveText(
+    "No disponible",
+  );
+  await page.getByLabel("Nombre de la cuenta").fill("Caja familiar");
+  await page.getByLabel("Estado").selectOption("archived");
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Caja familiar" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Archivada", { exact: true }).first(),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Cerrar cuenta" }).click();
+  await expect(
+    page.getByRole("button", { name: "Cerrar cuenta" }),
+  ).toBeVisible();
+  await page.getByLabel("Confirmo el cierre de esta cuenta").check();
+  await page.getByRole("button", { name: "Cerrar cuenta" }).click();
+  await expect(page.getByText("Cerrada", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Guardar cambios" }),
+  ).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByText("Cerrada", { exact: true })).toBeVisible();
 });

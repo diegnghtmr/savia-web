@@ -2,6 +2,8 @@ import "server-only";
 
 import {
   ACCOUNT_STATUSES,
+  ACCOUNT_TYPES,
+  ACCOUNT_TEXT,
   type AccountDraft,
   type AccountStatus,
 } from "./account-types";
@@ -17,7 +19,7 @@ type Target = {
 type Result<T> =
   | { kind: "ok"; value: T }
   | { kind: "unauthenticated" }
-  | { kind: "failed" };
+  | { kind: "failed"; status?: number };
 const failed = { kind: "failed" } as const;
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -33,7 +35,7 @@ export async function accountScope(accessToken: string) {
 async function request<T>(
   target: Target,
   suffix: string,
-  parse: (body: unknown) => T | null,
+  parse: (body: unknown, response: Response) => T | null,
   expected = 200,
   init: RequestInit = {},
 ): Promise<Result<T>> {
@@ -54,8 +56,9 @@ async function request<T>(
       },
     );
     if (response.status === 401) return { kind: "unauthenticated" };
-    if (response.status !== expected) return failed;
-    const value = parse(await response.json());
+    if (response.status !== expected)
+      return { kind: "failed", status: response.status };
+    const value = parse(await response.json(), response);
     return value === null ? failed : { kind: "ok", value };
   } catch {
     return failed;
@@ -98,26 +101,125 @@ export function listAccounts(
   });
 }
 
+export const ACCOUNT_ETAG = /^"[1-9]\d{0,9}"$/;
+
+export function getAccount(target: Target, id: string) {
+  return request(target, `/${id}`, (body, response) => {
+    const etag = response.headers.get("etag");
+    if (!record(body) || body.id !== id || !etag || !ACCOUNT_ETAG.test(etag))
+      return null;
+    const { name, type, currency, status, includeInNetWorth } = body;
+    if (
+      typeof name !== "string" ||
+      !name.trim() ||
+      typeof type !== "string" ||
+      !Object.hasOwn(ACCOUNT_TYPES, type) ||
+      typeof currency !== "string" ||
+      !/^[A-Z]{3}$/.test(currency) ||
+      typeof status !== "string" ||
+      !Object.hasOwn(ACCOUNT_STATUSES, status) ||
+      typeof includeInNetWorth !== "boolean"
+    )
+      return null;
+    const text = (field: (typeof ACCOUNT_TEXT)[number][0]) =>
+      typeof body[field] === "string" ? body[field] : "";
+    return {
+      name,
+      type: type as keyof typeof ACCOUNT_TYPES,
+      currency,
+      etag,
+      status: status as AccountStatus,
+      includeInNetWorth: String(includeInNetWorth),
+      institution: text("institution"),
+      maskedNumber: text("maskedNumber"),
+      description: text("description"),
+    };
+  });
+}
+
+function parseMoney(body: unknown) {
+  if (!record(body)) return null;
+  const { amountMinor, currency } = body;
+  return typeof amountMinor === "string" &&
+    /^-?\d+$/.test(amountMinor) &&
+    typeof currency === "string" &&
+    /^[A-Z]{3}$/.test(currency)
+    ? { amountMinor, currency }
+    : null;
+}
+
+function parseEquivalent(body: unknown) {
+  if (!record(body)) return null;
+  const { rate, rateDate, rateSource } = body;
+  const converted = parseMoney(body.converted);
+  return converted &&
+    typeof rate === "string" &&
+    /^\d+(\.\d+)?$/.test(rate) &&
+    typeof rateDate === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(rateDate) &&
+    typeof rateSource === "string"
+    ? { converted, rate, rateDate, rateSource }
+    : null;
+}
+
 export function getAccountBalance(target: Target, id: string) {
   return request(target, `/${id}/balance`, (body) => {
     if (
       !record(body) ||
       body.accountId !== id ||
-      !record(body.nativeBalance) ||
       typeof body.asOf !== "string" ||
       !Number.isFinite(Date.parse(body.asOf))
     )
       return null;
-    const { amountMinor, currency } = body.nativeBalance;
-    if (
-      typeof amountMinor !== "string" ||
-      !/^-?\d+$/.test(amountMinor) ||
-      typeof currency !== "string" ||
-      !/^[A-Z]{3}$/.test(currency)
-    )
-      return null;
-    return { amountMinor, currency, asOf: body.asOf };
+    const native = parseMoney(body.nativeBalance);
+    if (!native) return null;
+    return {
+      ...native,
+      asOf: body.asOf,
+      pending: parseMoney(body.pendingBalance),
+      available: parseMoney(body.availableBalance),
+      reconciled: parseMoney(body.reconciledBalance),
+      equivalent: parseEquivalent(body.baseCurrencyEquivalent),
+    };
   });
+}
+
+export function updateAccount(
+  target: Target,
+  id: string,
+  etag: string,
+  draft: Record<string, string | boolean | null>,
+) {
+  return request(
+    target,
+    `/${id}`,
+    (body) => (record(body) && body.id === id ? true : null),
+    200,
+    {
+      method: "PATCH",
+      headers: { "if-match": etag, "content-type": "application/json" },
+      body: JSON.stringify(draft),
+    },
+  );
+}
+
+export function closeAccount(
+  target: Target,
+  id: string,
+  etag: string,
+  key: string,
+) {
+  return request(
+    target,
+    `/${id}/close`,
+    (body) =>
+      record(body) && body.id === id && body.status === "closed" ? true : null,
+    200,
+    {
+      method: "POST",
+      headers: { "if-match": etag, "idempotency-key": key },
+    },
+  );
 }
 
 export function createAccount(
