@@ -9,9 +9,8 @@ import { loadServerConfig } from "./server-config";
 export const SESSION_KINDS = { present: "present", absent: "absent" } as const;
 
 /**
- * The only session shape the rest of the server boundary may observe. There is
- * no sign-in flow yet, so `absent` is the ordinary state and must be handled
- * as a value rather than as an exception.
+ * The only session shape the rest of the server boundary may observe.
+ * A missing session is a value rather than an exception.
  */
 export type Session =
   | {

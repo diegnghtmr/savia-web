@@ -78,8 +78,7 @@ export async function onboard(
 ): Promise<OnboardingResult> {
   try {
     const session = await ports.currentSession();
-    // No sign-in flow exists yet, so this is the ordinary path. It is answered
-    // without a request: an unauthenticated call would only earn a 401.
+    // Without a session, there is no authenticated onboarding request to send.
     if (session.kind === SESSION_KINDS.absent)
       return { kind: ONBOARDING_RESULT_KINDS.unauthenticated };
     const config = ports.loadConfig();

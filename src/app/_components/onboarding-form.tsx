@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { submitOnboardingForm } from "../_actions/onboarding";
 import {
@@ -67,6 +68,14 @@ export function OnboardingForm({
   return (
     <form action={submit} className="onboarding-form">
       {result && <Outcome result={result} />}
+      {(result?.kind === ONBOARDING_RESULT_KINDS.created ||
+        result?.kind === ONBOARDING_RESULT_KINDS.replayed) && (
+        <p>
+          <Link className="call-to-action" href="/overview">
+            Ir a vista general
+          </Link>
+        </p>
+      )}
       <fieldset>
         <legend>Tu cuenta</legend>
         <Field field="email" hint="Lo usamos para identificarte.">

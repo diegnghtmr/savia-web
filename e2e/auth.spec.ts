@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { E2E_USER } from "./fixtures";
+import { E2E_USER as NOT_ONBOARDED_USER } from "./fixtures";
 
 test.describe("authentication flow", () => {
-  test("sign-in sets httpOnly session cookie with zero browser application requests, renders onboarding, and sign-out clears session", async ({
+  test("a not-yet-onboarded user signs in with an httpOnly cookie and no browser API requests", async ({
     page,
     context,
   }) => {
@@ -28,8 +28,8 @@ test.describe("authentication flow", () => {
     ).toBeVisible();
 
     // 2. Fill credentials and submit
-    await page.getByLabel("Correo electrónico").fill(E2E_USER.email);
-    await page.getByLabel("Contraseña").fill(E2E_USER.password);
+    await page.getByLabel("Correo electrónico").fill(NOT_ONBOARDED_USER.email);
+    await page.getByLabel("Contraseña").fill(NOT_ONBOARDED_USER.password);
     await page.getByRole("button", { name: "Iniciar sesión" }).click();
 
     // 3. Verify redirect to /onboarding and it renders
@@ -60,9 +60,11 @@ test.describe("authentication flow", () => {
     await page.getByRole("button", { name: "Cerrar sesión" }).click();
     await expect(page).toHaveURL(/\/sign-in/);
 
-    // Verify navigating back to /onboarding redirects to /sign-in
-    await page.goto("/onboarding", { waitUntil: "domcontentloaded" });
-    await expect(page).toHaveURL(/\/sign-in/);
+    // Both protected entry points reject the signed-out session.
+    for (const path of ["/onboarding", "/overview"]) {
+      await page.goto(path, { waitUntil: "domcontentloaded" });
+      await expect(page).toHaveURL(/\/sign-in/);
+    }
   });
 
   test("sign-up with a new random email yields real confirmationRequired state from service", async ({

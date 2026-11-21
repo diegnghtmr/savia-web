@@ -6,7 +6,7 @@ import { AUTH_RESULT_KINDS, type AuthResult } from "@/lib/auth-result";
 
 /**
  * Server action for user sign-in.
- * On successful sign-in with a session established, redirects to /onboarding.
+ * The protected entry point checks the profile before rendering the overview.
  */
 export async function signInAction(
   _previous: AuthResult | null,
@@ -17,7 +17,7 @@ export async function signInAction(
 
   const result = await signIn({ email, password });
   if (result.kind === AUTH_RESULT_KINDS.signedIn) {
-    redirect("/onboarding");
+    redirect("/overview");
   }
   return result;
 }

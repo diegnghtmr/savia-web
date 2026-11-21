@@ -113,6 +113,9 @@ describe("the onboarding form", () => {
     const status = await screen.findByRole("status");
     expect(status).toHaveTextContent("Tu espacio quedó creado");
     expect(status).toHaveTextContent("w-1");
+    expect(
+      screen.getByRole("link", { name: "Ir a vista general" }),
+    ).toHaveAttribute("href", "/overview");
   });
 
   it("does not claim new work when the backend replayed an earlier request", async () => {
@@ -126,6 +129,9 @@ describe("the onboarding form", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Tu espacio ya estaba creado",
     );
+    expect(
+      screen.getByRole("link", { name: "Ir a vista general" }),
+    ).toHaveAttribute("href", "/overview");
   });
 
   it("names the field each backend violation belongs to", async () => {
