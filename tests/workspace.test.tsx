@@ -223,3 +223,26 @@ it("rejects an invalid draft without writing a workspace or cookie", async () =>
   expect(fetchImpl).not.toHaveBeenCalled();
   expect(store.set).not.toHaveBeenCalled();
 });
+
+it.each([
+  ["two names", (form: FormData) => form.append("name", "Oficina")],
+  ["two currencies", (form: FormData) => form.append("baseCurrency", "USD")],
+  [
+    "a file name",
+    (form: FormData) => form.set("name", new File(["x"], "x.txt")),
+  ],
+  [
+    "a file currency",
+    (form: FormData) => form.set("baseCurrency", new File(["x"], "c")),
+  ],
+])("rejects a draft with %s before any request", async (_label, tamper) => {
+  const form = new FormData();
+  form.set("name", "Casa");
+  form.set("baseCurrency", "COP");
+  tamper(form);
+  await expect(createWorkspaceAction(nonce, null, form)).resolves.toBe(
+    "Revisa el nombre y la moneda base del espacio.",
+  );
+  expect(fetchImpl).not.toHaveBeenCalled();
+  expect(store.set).not.toHaveBeenCalled();
+});

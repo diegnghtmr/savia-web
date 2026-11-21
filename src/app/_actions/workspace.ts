@@ -12,6 +12,14 @@ import {
 
 const unavailable = "Este espacio ya no está disponible.";
 
+/** Exactly one text value; repeated fields and files are rejected. */
+function singleText(form: FormData, field: string): string | null {
+  const values = form.getAll(field);
+  return values.length === 1 && typeof values[0] === "string"
+    ? values[0]
+    : null;
+}
+
 export async function selectWorkspace(
   _previous: string | null,
   form: FormData,
@@ -44,10 +52,9 @@ export async function createWorkspaceAction(
   form: FormData,
 ): Promise<string | null> {
   const { accessToken } = await requireSession();
-  const name = String(form.get("name") ?? "").trim();
-  const baseCurrency = String(form.get("baseCurrency") ?? "")
-    .trim()
-    .toUpperCase();
+  const name = singleText(form, "name")?.trim() ?? "";
+  const baseCurrency =
+    singleText(form, "baseCurrency")?.trim().toUpperCase() ?? "";
   if (
     !name ||
     name.length > 120 ||
