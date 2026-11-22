@@ -23,6 +23,7 @@ function singleText(form: FormData, field: string): string | null {
 export async function selectWorkspace(
   _previous: string | null,
   form: FormData,
+  redirectAfter = true,
 ): Promise<string | null> {
   // Validate the submission before touching the session (no refresh or cookie write).
   const ids = form.getAll("workspaceId");
@@ -30,13 +31,15 @@ export async function selectWorkspace(
   if (ids.length !== 1 || typeof id !== "string" || !WORKSPACE_ID.test(id))
     return unavailable;
   const { accessToken } = await requireSession();
-  return activateWorkspace(accessToken, id);
+  const error = await activateWorkspace(accessToken, id);
+  if (error === null && redirectAfter) redirect("/overview");
+  return error;
 }
 
 async function activateWorkspace(
   accessToken: string,
   id: string,
-): Promise<string> {
+): Promise<string | null> {
   const result = await listWorkspaces(accessToken);
   if (result.kind === "unauthenticated") redirect("/sign-in");
   if (result.kind === "failed") return "No pudimos consultar tus espacios.";
@@ -44,7 +47,7 @@ async function activateWorkspace(
   if (!workspace) return unavailable;
 
   await saveActiveWorkspace(workspace.id);
-  redirect("/overview");
+  return null;
 }
 
 export async function createWorkspaceAction(
@@ -76,5 +79,7 @@ export async function createWorkspaceAction(
   if (result.kind === "unauthenticated") redirect("/sign-in");
   if (result.kind === "failed")
     return "No pudimos crear el espacio. Vuelve a intentarlo.";
-  return activateWorkspace(accessToken, result.id);
+  const error = await activateWorkspace(accessToken, result.id);
+  if (error !== null) return error;
+  redirect("/overview");
 }

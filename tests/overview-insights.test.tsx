@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import Overview from "@/app/(workspace)/overview/page";
 import { requireSession } from "@/lib/session";
 import type { SearchParams } from "@/lib/view-filters";
@@ -62,8 +62,12 @@ afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
-const renderPeriod = async (input: SearchParams = period) =>
-  render(await Overview({ searchParams: Promise.resolve(input) }));
+const renderPeriod = async (input: SearchParams = period) => {
+  const page = await Overview({ searchParams: Promise.resolve(input) });
+  await act(async () => {
+    render(page);
+  });
+};
 
 it.each([
   { from: period.from },
@@ -171,4 +175,46 @@ it("keeps the financial summary when a recurring list fails", async () => {
   );
   expect(screen.getByText("No hay suscripciones detectadas.")).toBeVisible();
   expect(screen.getByText("87,25 %")).toBeVisible();
+});
+
+it.each([
+  ["analytics/summary", "No pudimos cargar el resumen financiero."],
+  ["recurring-rules", "No pudimos cargar las próximas recurrencias."],
+  ["subscriptions", "No pudimos cargar las suscripciones detectadas."],
+])("bounds stalled report %s", async (route, error) => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const pending = Promise.withResolvers<Response>();
+  const started = Promise.withResolvers<void>();
+  const fixtures = fetchImpl.getMockImplementation()!;
+  let signal: AbortSignal | null | undefined;
+  fetchImpl.mockImplementation((url, init) => {
+    const path = new URL(String(url)).pathname;
+    if (path !== `/v1/${route}`) return fixtures(url, init);
+    signal = init?.signal;
+    started.resolve();
+    return pending.promise;
+  });
+  const page = Overview({ searchParams: Promise.resolve(period) });
+  try {
+    await started.promise;
+    const unresolved = Promise.resolve().then(() => null);
+    const result = await Promise.race([page, unresolved]);
+    expect(result).not.toBeNull();
+    await act(async () => {
+      render(result);
+    });
+    const picker = screen.getByRole("combobox", { name: "Espacio activo" });
+    expect(picker).toHaveValue(id);
+    expect(screen.queryByText(error, { exact: true })).not.toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(signal?.aborted).toBe(true);
+    expect(screen.getByText(error, { exact: true })).toBeVisible();
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+  } finally {
+    pending.resolve(new Response(null, { status: 503 }));
+    await page;
+    vi.useRealTimers();
+  }
 });

@@ -54,11 +54,13 @@ export async function readSummary(
   token: string,
   workspace: Workspace,
   period: InsightsPeriod,
+  signal?: AbortSignal,
 ) {
   if (!workspace.baseCurrency) return null;
   const response = await insightsTransport(token, workspace)(
     "analytics/summary",
     new URLSearchParams(period),
+    signal ? { signal } : undefined,
   );
   if (response?.status !== 200) return null;
   const body = record(await response.json().catch(() => null));

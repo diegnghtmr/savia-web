@@ -15,7 +15,16 @@ export function WorkspaceSelector({
   action = selectWorkspace,
 }: WorkspaceSelectorProps) {
   const fieldId = useId();
-  const [error, submit, pending] = useActionState(action, null);
+  const [error, submit, pending] = useActionState(
+    async (previous: string | null, form: FormData) => {
+      const result = await action(previous, form, false);
+      // Start a fresh request with the verified cookie instead of redirecting
+      // into the same streaming route from within its server action.
+      if (result === null) window.location.assign("/overview");
+      return result;
+    },
+    null,
+  );
 
   return (
     <form action={submit}>

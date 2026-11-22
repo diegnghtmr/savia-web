@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import { InsightsPeriodForm } from "@/app/_components/insights-period-form";
 import { WorkspaceRecovery } from "@/app/_components/workspace-recovery";
 import { WorkspaceSelector } from "@/app/_components/workspace-selector";
@@ -10,7 +11,7 @@ import { requireProfile } from "@/lib/require-profile";
 import type { SearchParams } from "@/lib/view-filters";
 import { readWorkspaceContext } from "@/lib/workspace-context";
 import { FinancialSummary } from "./financial-summary";
-import { RecurringPreviews } from "./recurring";
+import { DetectedPreview, UpcomingPreview } from "./recurring";
 
 export const metadata = { title: "Vista general" };
 // A build without service config must not prerender a signed-out response.
@@ -55,21 +56,47 @@ export default async function OverviewPage({
       </>
     );
   }
-  const [summary, upcoming, detected] = await Promise.all([
-    readSummary(profile.accessToken, active, period),
-    readUpcoming(profile.accessToken, active),
-    readDetected(profile.accessToken, active),
-  ]);
+  const { accessToken } = profile;
+  const summary = withDeadline((signal) =>
+    readSummary(accessToken, active, period, signal),
+  );
+  const upcoming = withDeadline((signal) =>
+    readUpcoming(accessToken, active, signal),
+  );
+  const detected = withDeadline((signal) =>
+    readDetected(accessToken, active, signal),
+  );
   return (
     <>
       <p className="eyebrow">Vista general</p>
       <h1 style={{ overflowWrap: "anywhere" }}>{active.name}</h1>
       <WorkspaceSelector key={active.id} items={items} active={active.id} />
       <InsightsPeriodForm period={period} />
-      <FinancialSummary summary={summary} />
-      <RecurringPreviews upcoming={upcoming} detected={detected} />
+      <Suspense fallback={<p role="status">Cargando resumen financiero…</p>}>
+        <FinancialSummary report={summary} />
+      </Suspense>
+      <Suspense fallback={<p role="status">Cargando recurrencias…</p>}>
+        <UpcomingPreview report={upcoming} />
+      </Suspense>
+      <Suspense fallback={<p role="status">Cargando suscripciones…</p>}>
+        <DetectedPreview report={detected} />
+      </Suspense>
     </>
   );
+}
+
+async function withDeadline<T>(read: (signal: AbortSignal) => Promise<T>) {
+  const controller = new AbortController();
+  const { promise, resolve } = Promise.withResolvers<null>();
+  const timer = setTimeout(() => {
+    resolve(null);
+    controller.abort();
+  }, 5000);
+  try {
+    return await Promise.race([read(controller.signal), promise]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function Retry({ title, message }: { title: string; message: string }) {

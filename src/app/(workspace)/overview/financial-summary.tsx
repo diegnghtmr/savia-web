@@ -1,12 +1,14 @@
+import { use } from "react";
 import { FxFreshness } from "@/app/_components/insights-period-form";
 import { money } from "@/lib/account-money";
 import type { readSummary } from "@/lib/insights-gateway";
 
 export function FinancialSummary({
-  summary,
+  report,
 }: {
-  summary: Awaited<ReturnType<typeof readSummary>>;
+  report: ReturnType<typeof readSummary>;
 }) {
+  const summary = use(report);
   return (
     <section aria-labelledby="overview-financial-summary">
       <h2 id="overview-financial-summary">Resumen financiero</h2>

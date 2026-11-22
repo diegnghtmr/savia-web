@@ -19,11 +19,13 @@ function row(value: unknown, nameKey: string) {
 export async function readUpcoming(
   token: string,
   workspace: Parameters<typeof insightsTransport>[1],
+  signal: AbortSignal,
 ) {
   if (!workspace.baseCurrency) return null;
   const response = await insightsTransport(token, workspace)(
     "recurring-rules",
     new URLSearchParams({ limit: "200" }),
+    { signal },
   );
   if (response?.status !== 200) return null;
   const page = parsePage(await response.json().catch(() => null), (value) => {
@@ -53,11 +55,13 @@ export async function readUpcoming(
 export async function readDetected(
   token: string,
   workspace: Parameters<typeof insightsTransport>[1],
+  signal: AbortSignal,
 ) {
   if (!workspace.baseCurrency) return null;
   const response = await insightsTransport(token, workspace)(
     "subscriptions",
     new URLSearchParams({ limit: "200", status: "detected" }),
+    { signal },
   );
   if (response?.status !== 200) return null;
   return parsePage(await response.json().catch(() => null), (value) => {
