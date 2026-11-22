@@ -16,5 +16,6 @@ export const config = {
     "/budgets/:id/edit/:version",
     "/funds/new",
     "/funds/:id/contribute",
+    "/debts/:id/pay",
   ],
 };

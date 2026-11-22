@@ -1,6 +1,8 @@
 import { saveTransactionAction } from "@/app/_actions/transactions";
 import { recordTransfer } from "@/app/_actions/transfers";
 import { saveBudget } from "@/app/_actions/budgets";
+import { admitDraftSeed } from "@/lib/draft-idempotency";
+import { prepareDraft } from "@/lib/draft-preparation";
 
 const workspaceId = "80000000-0000-4000-8000-000000000001";
 const source = "80000000-0000-4000-8000-000000000002";
@@ -19,6 +21,7 @@ vi.mock("next/headers", () => ({
   cookies: async () => ({
     get: (name: string) => ({ value: jar.get(name) }),
     set: (name: string, value: string) => jar.set(name, value),
+    getAll: () => [...jar].map(([name, value]) => ({ name, value })),
   }),
 }));
 vi.mock("@/lib/session", () => ({
@@ -187,6 +190,39 @@ it("never infers a missing first membership Date from a later valid membership c
     confirmation: expect.any(String),
   });
   expect(writes).toHaveLength(1);
+});
+
+it("never dispatches an unclocked confirmation twice after all response headers are lost", async () => {
+  jar.clear();
+  expect(await admitDraftSeed(workspaceId)).toBe(true);
+  backendDate = undefined;
+  const input = transfer();
+  const reserve = () => prepareDraft(() => sendTransfer(input));
+  const { state } = await reserve();
+  expect(state).toEqual({ error: warning, confirmation: expect.any(String) });
+  expect(writes).toHaveLength(0);
+  const first = (state as { confirmation: string }).confirmation;
+  input.set("confirmDraft", first);
+  const { prepared } = await reserve();
+  expect(prepared).toEqual(expect.any(String));
+  input.set("draftPrepared", prepared!);
+  const saved = new Map(jar);
+  expect(await sendTransfer(input)).toHaveProperty("error");
+  expect(writes).toHaveLength(1);
+  jar.clear();
+  for (const [name, value] of saved) jar.set(name, value);
+  const retry = await sendTransfer(input);
+  expect(retry).toEqual({ error: warning, confirmation: expect.any(String) });
+  expect(retry.confirmation).not.toBe(first);
+  expect(writes).toHaveLength(1);
+  input.set("confirmDraft", retry.confirmation!);
+  const renewed = await reserve();
+  input.set("draftPrepared", renewed.prepared!);
+  expect(await sendTransfer(input)).toEqual({ receipt: id });
+  expect(writes).toHaveLength(2);
+  expect(writes[1].headers.get("idempotency-key")).not.toBe(
+    writes[0].headers.get("idempotency-key"),
+  );
 });
 
 it("applies the same transaction fields to a newer If-Match with a different key", async () => {

@@ -114,3 +114,33 @@ it("rejects malformed detail IDs before session and resolves normalized IDs acro
     `https://backend.test/v1/funds?limit=200&cursor=${cursor(workspace)}`,
   );
 });
+
+it("aborts a stalled page at the overall deadline and renders the bounded search fallback", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const pending = Promise.withResolvers<Response>();
+  const started = Promise.withResolvers<void>();
+  let signal: AbortSignal | null | undefined;
+  const fixtures = fetchImpl.getMockImplementation()!;
+  fetchImpl.mockImplementation((url, init) => {
+    if (String(url).includes("/v1/funds?")) {
+      signal = init?.signal;
+      started.resolve();
+      return pending.promise;
+    }
+    return fixtures(url, init);
+  });
+  try {
+    const page = Detail({ params: Promise.resolve({ fundId: id }) });
+    await started.promise;
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(signal?.aborted).toBe(true);
+    render(await page);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "No pudimos encontrar el fondo",
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  } finally {
+    pending.resolve(new Response(null, { status: 503 }));
+    vi.useRealTimers();
+  }
+});

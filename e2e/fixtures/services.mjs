@@ -3,14 +3,22 @@ import { createServer } from "node:http";
 import { E2E_USER } from "../fixtures.ts";
 import {
   DRAFT_CLOCK_USER,
+  NO_DRAFT_CLOCK_USER,
   ONBOARDED_USER,
   RECOVERY_USER,
 } from "./accounts.mjs";
 import { handleBudgets } from "./budgets.mjs";
 import { handleFunds } from "./funds.mjs";
+import { handleDebts } from "./debts.mjs";
 
 // This server is test-only and accepts only credentials and sessions it issues.
-const accounts = [E2E_USER, ONBOARDED_USER, RECOVERY_USER, DRAFT_CLOCK_USER];
+const accounts = [
+  E2E_USER,
+  ONBOARDED_USER,
+  RECOVERY_USER,
+  DRAFT_CLOCK_USER,
+  NO_DRAFT_CLOCK_USER,
+];
 const sessions = new Map();
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 const encode = (value) =>
@@ -82,9 +90,10 @@ async function handle(request, reply) {
         user,
         onboarded: account !== E2E_USER,
         workspaces:
-          account === ONBOARDED_USER || account === DRAFT_CLOCK_USER
-            ? [workspace("Casa"), workspace("Oficina")]
-            : [],
+          account === RECOVERY_USER || account === E2E_USER
+            ? []
+            : [workspace("Casa"), workspace("Oficina")],
+        omitMembershipDate: account === NO_DRAFT_CLOCK_USER,
         membershipDate:
           account === DRAFT_CLOCK_USER ? "Fri, 20 Nov 2026 12:00:00 GMT" : null,
         replays: new Map(),
@@ -94,6 +103,7 @@ async function handle(request, reply) {
         rates: new Map(),
         budgets: new Map(),
         funds: new Map(),
+        debts: new Map(),
       });
       return json(200, {
         user,
@@ -129,6 +139,7 @@ async function handle(request, reply) {
       });
     case "GET /v1/workspaces":
       if (!session) return unauthorized();
+      if (session.omitMembershipDate) reply.sendDate = false;
       return json(
         200,
         {
@@ -241,6 +252,28 @@ async function handle(request, reply) {
             })
           : json(403, {});
       }
+      if (
+        /^(?:GET \/v1\/debts(?:\/[^/]+\/projection)?|POST \/v1\/debts\/[^/]+\/payments)$/.test(
+          route,
+        )
+      ) {
+        if (!session) return unauthorized();
+        const space = session.workspaces.find(
+          ({ id }) => id === request.headers["x-workspace-id"],
+        );
+        return space
+          ? handleDebts({
+              request,
+              url,
+              json,
+              session,
+              space,
+              readJson,
+              accounts: () =>
+                accountsFor(session, space, new Date().toISOString()),
+            })
+          : json(403, {});
+      }
       return json(404, { message: "Unsupported fixture route" });
   }
 }
@@ -291,6 +324,17 @@ async function handleAccounts(request, url, session, json) {
     if (replay)
       return replay.draft === draft ? json(201, replay.created) : json(409, {});
     const { openingBalance, openingBalanceDate, ...fields } = body;
+    if (fields.informalDebt !== undefined) {
+      const { counterpartyName, direction } = fields.informalDebt ?? {};
+      if (
+        fields.type !== "informal_debt" ||
+        typeof counterpartyName !== "string" ||
+        !counterpartyName.trim() ||
+        [...counterpartyName.trim()].length > 120 ||
+        !["i_owe", "owed_to_me"].includes(direction)
+      )
+        return json(422, {});
+    }
     const created = accountResource(fields, now);
     if (openingBalance)
       session.openings.set(created.id, { openingBalance, openingBalanceDate });

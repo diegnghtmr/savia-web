@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import AccountPage from "@/app/(workspace)/accounts/[accountId]/page";
 import AccountsPage from "@/app/(workspace)/accounts/page";
 import {
@@ -129,6 +129,112 @@ it.each([
     ]);
   },
 );
+
+it("rejects incomplete, unexpected or ambiguous informal details before the session", async () => {
+  const form = (
+    counterparty: string,
+    direction: string,
+    type = "informal_debt",
+  ) => {
+    const data = draft();
+    data.set("type", type);
+    data.set("counterpartyName", counterparty);
+    data.set("direction", direction);
+    return data;
+  };
+  const repeat = form("Vecina", "i_owe");
+  repeat.append("direction", "owed_to_me");
+  const file = form("Vecina", "i_owe");
+  file.set("counterpartyName", new File(["x"], "bad.txt"));
+  for (const data of [
+    repeat,
+    file,
+    form("", "i_owe"),
+    form("Vecina", ""),
+    form("Vecina", "otro"),
+    form("x".repeat(121), "owed_to_me"),
+    form("x\0y", "i_owe"),
+    form("Vecina", "i_owe", "cash"),
+  ]) {
+    expect(await createAccountAction(submission, null, data)).toBe(
+      "Revisa la contraparte y la dirección de la deuda informal.",
+    );
+  }
+  expect(requireSession).not.toHaveBeenCalled();
+  expect(fetchImpl).not.toHaveBeenCalled();
+});
+
+it.each(["i_owe", "owed_to_me", ""])(
+  "creates an informal account with optional paired details (%s)",
+  async (direction) => {
+    const data = draft("Préstamo familiar");
+    data.set("type", "informal_debt");
+    if (direction) {
+      data.set("counterpartyName", "   Vecina   ");
+      data.set("direction", direction);
+    }
+    fetchImpl
+      .mockResolvedValueOnce(page([{ id, name: "Casa" }]))
+      .mockResolvedValueOnce(Response.json({ id }, { status: 201 }));
+    await expect(createAccountAction(submission, null, data)).rejects.toThrow(
+      "redirect:/accounts",
+    );
+    const [url, init] = fetchImpl.mock.calls[1];
+    expect(url).toBe("https://backend.test/savia/v1/accounts");
+    expect(new Headers(init?.headers).get("x-workspace-id")).toBe(id);
+    expect(JSON.parse(String(init?.body))).toEqual({
+      name: "Préstamo familiar",
+      type: "informal_debt",
+      currency: "COP",
+      ...(direction && {
+        informalDebt: { counterpartyName: "Vecina", direction },
+      }),
+    });
+  },
+);
+
+it("recognizes informal details in both account views without interpreting the ledger sign", async () => {
+  const informal = {
+    ...account,
+    type: "informal_debt",
+    currency: "COP",
+    includeInNetWorth: true,
+    informalDebt: { counterpartyName: "Vecina", direction: "owed_to_me" },
+  };
+  const profile = () => Response.json({ id });
+  const membership = () => page([{ id, name: "Casa" }]);
+  const balance = () =>
+    Response.json({
+      accountId: id,
+      nativeBalance: { currency: "COP", amountMinor: "-125" },
+      asOf: "2026-01-01T00:00:00Z",
+    });
+  fetchImpl
+    .mockResolvedValueOnce(profile())
+    .mockResolvedValueOnce(membership())
+    .mockResolvedValueOnce(page([informal]))
+    .mockResolvedValueOnce(balance());
+  const list = render(
+    await AccountsPage({ searchParams: Promise.resolve({}) }),
+  );
+  const entry = within(screen.getByRole("listitem"));
+  expect(entry.getByText("Deuda informal", { exact: true })).toBeVisible();
+  expect(entry.getByText(/Vecina/)).toBeVisible();
+  expect(entry.getByText(/Me deben/)).toBeVisible();
+  list.unmount();
+  fetchImpl
+    .mockResolvedValueOnce(profile())
+    .mockResolvedValueOnce(membership())
+    .mockResolvedValueOnce(
+      Response.json(informal, { headers: { etag: '"7"' } }),
+    )
+    .mockResolvedValueOnce(balance());
+  render(await AccountPage({ params }));
+  expect(screen.getByText(/Deuda informal.*COP/)).toBeVisible();
+  expect(screen.getByText("Vecina")).toBeVisible();
+  expect(screen.getByText("Me deben")).toBeVisible();
+  expect(screen.getByText(/−COP\s1,25/)).toBeVisible();
+});
 
 it("rejects invalid opening balance fields before reading the session", async () => {
   const duplicate = draft();

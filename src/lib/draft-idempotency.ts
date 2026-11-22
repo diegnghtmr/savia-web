@@ -3,6 +3,7 @@ import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
 import { draftCookieOptions, draftSeedCookie } from "./draft-cookie";
+import { admitOneShotDraft, consumeOneShotDraft } from "./draft-one-shot";
 import { draftReserved, isDraftPreparation } from "./draft-preparation";
 import { draftConfirmation } from "./draft-retry";
 import { requireProfile } from "./require-profile";
@@ -256,12 +257,15 @@ export async function persistentDraft(
     !!confirm ||
     serverTime === null ||
     (entry.status === "pending" && !fresh(entry.since, serverTime));
-  if (needsChoice) {
-    if (
-      !entry.challenge ||
-      confirm !== entry.challenge ||
-      (preparing && serverTime === null)
-    ) {
+  const oneShotDispatch =
+    prepared &&
+    entry.since === "" &&
+    submittedConfirmation === entry.generation &&
+    !entry.challenge &&
+    consumeOneShotDraft(entry.permit);
+  let oneShotReservation = false;
+  if (needsChoice && !oneShotDispatch) {
+    if (!entry.challenge || confirm !== entry.challenge) {
       entry = {
         ...entry,
         status: "pending",
@@ -271,6 +275,7 @@ export async function persistentDraft(
       if (!save(store, state, entry, serverTime)) return null;
       return { confirmation: entry.challenge, key: "", receipt: () => {} };
     }
+    oneShotReservation = preparing && serverTime === null;
     entry = {
       ...entry,
       generation: entry.challenge,
@@ -289,6 +294,7 @@ export async function persistentDraft(
     status: "pending",
     permit: preparing ? randomUUID() : "",
   };
+  if (oneShotReservation && !admitOneShotDraft(entry.permit)) return null;
   if (
     !save(
       store,
@@ -300,8 +306,10 @@ export async function persistentDraft(
       },
       serverTime,
     )
-  )
+  ) {
+    if (oneShotReservation) consumeOneShotDraft(entry.permit);
     return null;
+  }
   draftReserved(entry.permit);
   return {
     key,

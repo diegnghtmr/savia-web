@@ -2,7 +2,12 @@ import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AccountForm } from "@/app/_components/account-form";
-import { ACCOUNT_STATUSES, type AccountStatus } from "@/lib/account-types";
+import {
+  ACCOUNT_STATUSES,
+  ACCOUNT_TYPES,
+  INFORMAL_DEBT_DIRECTIONS,
+  type AccountStatus,
+} from "@/lib/account-types";
 import {
   accountScope,
   getAccountBalance,
@@ -93,6 +98,13 @@ export default async function AccountsPage({
                   </Link>
                 </h2>
                 <p>{ACCOUNT_STATUSES[account.status]}</p>
+                {account.type && <p>{ACCOUNT_TYPES[account.type]}</p>}
+                {account.informalDebt && (
+                  <p>
+                    {INFORMAL_DEBT_DIRECTIONS[account.informalDebt.direction]} ·{" "}
+                    {account.informalDebt.counterpartyName}
+                  </p>
+                )}
                 {balance.kind === "ok" ? (
                   <p className="type-finance-md">
                     Saldo confirmado: {money(balance.value)} · Corte:{" "}

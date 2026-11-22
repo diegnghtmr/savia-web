@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { ACCOUNT_TYPES } from "@/lib/account-types";
+import { ACCOUNT_TYPES, INFORMAL_DEBT_DIRECTIONS } from "@/lib/account-types";
 import { createAccountAction } from "../_actions/accounts";
 
 export function AccountForm({
@@ -15,6 +15,8 @@ export function AccountForm({
   const [name, setName] = useState("");
   const [currency, setCurrency] = useState("");
   const [type, setType] = useState("cash");
+  const [counterparty, setCounterparty] = useState("");
+  const [direction, setDirection] = useState("");
   const [opening, setOpening] = useState("");
   const [date, setDate] = useState("");
   const [error, submit, pending] = useActionState(
@@ -54,6 +56,40 @@ export function AccountForm({
           ))}
         </select>
       </div>
+      {type === "informal_debt" && (
+        <fieldset>
+          <legend>Detalles de la deuda informal (opcionales)</legend>
+          <p className="hint">
+            Indica la contraparte y la dirección, o deja ambos campos vacíos.
+          </p>
+          <label className="field">
+            Contraparte
+            <input
+              name="counterpartyName"
+              maxLength={120}
+              value={counterparty}
+              onChange={(event) => setCounterparty(event.target.value)}
+            />
+          </label>
+          <label className="field">
+            Dirección
+            <select
+              name="direction"
+              value={direction}
+              onChange={(event) => setDirection(event.target.value)}
+            >
+              <option value="">Sin especificar</option>
+              {Object.entries(INFORMAL_DEBT_DIRECTIONS).map(
+                ([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ),
+              )}
+            </select>
+          </label>
+        </fieldset>
+      )}
       <div className="field">
         <label htmlFor="account-currency">Moneda</label>
         <input

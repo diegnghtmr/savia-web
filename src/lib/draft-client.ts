@@ -15,7 +15,8 @@ type DraftKind =
   | "rate"
   | "budget"
   | "allocations"
-  | "fund";
+  | "fund"
+  | "debt-payment";
 export const unavailableDraft =
   "Recarga la página antes de volver a intentarlo.";
 

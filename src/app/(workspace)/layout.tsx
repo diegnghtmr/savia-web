@@ -25,6 +25,9 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
           <Link href="/funds" prefetch={false}>
             Fondos
           </Link>
+          <Link href="/debts" prefetch={false}>
+            Deudas
+          </Link>
           <form action={signOutAction}>
             <button className="submit" type="submit">
               Cerrar sesión

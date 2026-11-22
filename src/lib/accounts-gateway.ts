@@ -4,7 +4,9 @@ import {
   ACCOUNT_STATUSES,
   ACCOUNT_TYPES,
   ACCOUNT_TEXT,
+  informalDebtDetails,
   type AccountDraft,
+  type AccountType,
   type AccountStatus,
 } from "./account-types";
 import { loadServerConfig } from "./server-config";
@@ -23,6 +25,11 @@ type Result<T> =
 const failed = { kind: "failed" } as const;
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
+function accountInformalDetails(type: unknown, value: unknown) {
+  return type === "informal_debt" && record(value)
+    ? informalDebtDetails(value.counterpartyName, value.direction)
+    : null;
+}
 
 export async function accountScope(accessToken: string) {
   const context = await readWorkspaceContext(accessToken);
@@ -86,7 +93,7 @@ export function listAccounts(
     const items = [];
     for (const item of body.items as unknown[]) {
       if (!record(item)) return null;
-      const { id, name, status } = item;
+      const { id, name, status, type } = item;
       if (
         typeof id !== "string" ||
         !WORKSPACE_ID.test(id) ||
@@ -96,7 +103,16 @@ export function listAccounts(
         !Object.hasOwn(ACCOUNT_STATUSES, status)
       )
         return null;
-      items.push({ id, name, status: status as AccountStatus });
+      items.push({
+        id,
+        name,
+        status: status as AccountStatus,
+        type:
+          typeof type === "string" && Object.hasOwn(ACCOUNT_TYPES, type)
+            ? (type as AccountType)
+            : null,
+        informalDebt: accountInformalDetails(type, item.informalDebt),
+      });
     }
     return { items, nextCursor: hasNextPage ? (nextCursor as string) : null };
   });
@@ -132,7 +148,8 @@ export function getAccount(target: Target, id: string) {
       typeof body[field] === "string" ? body[field] : "";
     return {
       name,
-      type: type as keyof typeof ACCOUNT_TYPES,
+      type: type as AccountType,
+      informalDebt: accountInformalDetails(type, body.informalDebt),
       currency,
       etag,
       status: status as AccountStatus,

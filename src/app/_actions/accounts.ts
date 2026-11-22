@@ -6,6 +6,7 @@ import { decimalToMinor } from "@/lib/account-money";
 import {
   ACCOUNT_TEXT,
   ACCOUNT_TYPES,
+  informalDebtDetails,
   type AccountDraft,
 } from "@/lib/account-types";
 import {
@@ -119,6 +120,15 @@ export async function createAccountAction(
   if (amountMinor !== null)
     draft.openingBalance = { amountMinor, currency: draft.currency };
   if (date) draft.openingBalanceDate = date;
+
+  const counterparty = optional("counterpartyName");
+  const direction = optional("direction");
+  if (counterparty !== "" || direction !== "") {
+    const details = informalDebtDetails(counterparty, direction);
+    if (draft.type !== "informal_debt" || !details)
+      return "Revisa la contraparte y la dirección de la deuda informal.";
+    draft.informalDebt = details;
+  }
 
   const { accessToken } = await requireSession();
   const scope = await accountScope(accessToken);

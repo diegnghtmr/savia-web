@@ -36,7 +36,8 @@ export type FinancialRoute =
   | "currency-exchanges"
   | "exchange-rates"
   | "funds"
-  | `funds/${string}/contributions`;
+  | `funds/${string}/contributions`
+  | `debts/${string}/payments`;
 
 export function ledgerFilters(input: SearchParams) {
   const filters = viewFilters(input, {

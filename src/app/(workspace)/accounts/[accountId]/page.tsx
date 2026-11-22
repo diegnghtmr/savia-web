@@ -7,6 +7,7 @@ import {
   ACCOUNT_STATUSES,
   ACCOUNT_TEXT,
   ACCOUNT_TYPES,
+  INFORMAL_DEBT_DIRECTIONS,
 } from "@/lib/account-types";
 import {
   accountScope,
@@ -60,6 +61,14 @@ export default async function AccountPage({
         {ACCOUNT_TYPES[account.type]} · {account.currency}
       </p>
       <p>{ACCOUNT_STATUSES[account.status]}</p>
+      {account.informalDebt && (
+        <dl>
+          <dt>Contraparte</dt>
+          <dd>{account.informalDebt.counterpartyName}</dd>
+          <dt>Dirección</dt>
+          <dd>{INFORMAL_DEBT_DIRECTIONS[account.informalDebt.direction]}</dd>
+        </dl>
+      )}
       <h2>Saldos</h2>
       {balance ? (
         <>

@@ -9,7 +9,30 @@ export const ACCOUNT_TYPES = {
   investment_manual: "Inversión manual",
   receivable: "Cuenta por cobrar",
   generic: "Genérica",
+  informal_debt: "Deuda informal",
 };
+export type AccountType = keyof typeof ACCOUNT_TYPES;
+export const INFORMAL_DEBT_DIRECTIONS = {
+  i_owe: "Debo",
+  owed_to_me: "Me deben",
+};
+export function informalDebtDetails(counterparty: unknown, direction: unknown) {
+  if (
+    typeof counterparty !== "string" ||
+    typeof direction !== "string" ||
+    !Object.hasOwn(INFORMAL_DEBT_DIRECTIONS, direction)
+  )
+    return null;
+  const counterpartyName = counterparty.trim();
+  return counterpartyName &&
+    [...counterpartyName].length <= 120 &&
+    !counterpartyName.includes("\0")
+    ? {
+        counterpartyName,
+        direction: direction as keyof typeof INFORMAL_DEBT_DIRECTIONS,
+      }
+    : null;
+}
 export const ACCOUNT_STATUSES = {
   active: "Activa",
   archived: "Archivada",
@@ -22,6 +45,7 @@ export type AccountDraft = {
   currency: string;
   openingBalance?: { amountMinor: string; currency: string };
   openingBalanceDate?: string;
+  informalDebt?: NonNullable<ReturnType<typeof informalDebtDetails>>;
 };
 export const ACCOUNT_TEXT = [
   ["name", "Nombre de la cuenta", 120],

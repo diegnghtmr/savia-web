@@ -18,7 +18,7 @@ export default async function ContributePage({
   if (!scope) return <Link href="/overview">Revisa el espacio activo</Link>;
   const fund = await scope.detail(fundId.toLowerCase());
   if (fund === "not-found") notFound();
-  if (!fund) return <p role="alert">No pudimos cargar el fondo.</p>;
+  if (!fund) return <p role="alert">No pudimos encontrar el fondo</p>;
   const accounts = await scope.activeAccounts();
   const choices =
     accounts &&

@@ -3,6 +3,7 @@ import "server-only";
 import { amount, ledgerScope, parsePage } from "./transactions-gateway";
 import { calendarDate, viewFilters, type SearchParams } from "./view-filters";
 import { WORKSPACE_ID } from "./workspace-gateway";
+import { scanWorkspacePages } from "./workspace-page-scan";
 
 const statuses = {
   active: "Activo",
@@ -13,7 +14,7 @@ const statuses = {
 export const fundId = (id: unknown): id is string =>
   typeof id === "string" && WORKSPACE_ID.test(id);
 
-function cursorWorkspace(token: string) {
+export function cursorWorkspace(token: string) {
   if (!/^[\w-]{1,256}$/.test(token)) return null;
   try {
     const bytes = Buffer.from(token, "base64url");
@@ -93,9 +94,10 @@ export type Fund = NonNullable<ReturnType<typeof fund>>;
 export async function fundScope(token: string) {
   const scope = await ledgerScope(token);
   if (!scope) return null;
-  const list = async (query: URLSearchParams) => {
+  const list = async (query: URLSearchParams, signal?: AbortSignal) => {
     const response = await scope.request(
       `funds${query.size ? `?${query}` : ""}`,
+      signal ? { signal } : undefined,
     );
     if (response?.status === 400) return "invalid-filters" as const;
     if (!response?.ok) return null;
@@ -108,19 +110,6 @@ export async function fundScope(token: string) {
   return {
     ...scope,
     list,
-    async detail(id: string) {
-      const query = new URLSearchParams({ limit: "200" });
-      const seen = new Set<string>();
-      for (;;) {
-        const page = await list(query);
-        if (!page || page === "invalid-filters") return null;
-        const match = page.items.find((row) => row.id === id);
-        if (match) return match;
-        if (!page.cursor) return "not-found" as const;
-        if (seen.has(page.cursor)) return null;
-        seen.add(page.cursor);
-        query.set("cursor", page.cursor);
-      }
-    },
+    detail: (id: string) => scanWorkspacePages(id, list),
   };
 }
