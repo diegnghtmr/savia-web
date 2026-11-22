@@ -21,9 +21,14 @@ test("reviews and commits a statement", async ({ page }) => {
   await expect(page.getByText("Con errores: 1", { exact: true })).toBeVisible();
   await page.getByLabel("Cuenta de destino").selectOption({ label: "Caja" });
   await page.getByLabel("Confirmo la importación").check();
+  await expect(page).toHaveURL(/\/imports\/[0-9a-f-]{36}$/);
+  const jobUrl = page.url();
   await page.getByRole("button", { name: "Importar movimientos" }).click();
-  await page.getByRole("link", { name: "Ver estado" }).click();
-  await expect(page.getByText("Importación completada.")).toBeVisible();
+  const completed = page.getByText("Importación completada.", { exact: true });
+  await expect(completed).toBeVisible();
+  await expect(page).toHaveURL(jobUrl);
+  await page.reload();
+  await expect(completed).toBeVisible();
 });
 
 test("polls OCR and opens the linked transaction", async ({ page }) => {
