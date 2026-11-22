@@ -9,6 +9,7 @@ interface WorkspaceSummary {
   id: string;
   name: string;
   baseCurrency?: string;
+  isOwner?: true;
   serverTime: number | null;
 }
 
@@ -75,6 +76,7 @@ export async function listWorkspaces(
           id,
           name,
           serverTime,
+          ...(entry?.role === "owner" && { isOwner: true as const }),
           ...(typeof currency === "string" && /^[A-Z]{3}$/.test(currency)
             ? { baseCurrency: currency }
             : {}),

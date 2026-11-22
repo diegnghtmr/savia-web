@@ -31,6 +31,15 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
           <Link href="/analytics" prefetch={false}>
             Analítica
           </Link>
+          <Link href="/imports" prefetch={false}>
+            Importaciones
+          </Link>
+          <Link href="/receipts" prefetch={false}>
+            Comprobantes
+          </Link>
+          <Link href="/reports" prefetch={false}>
+            Informes
+          </Link>
           <form action={signOutAction}>
             <button className="submit" type="submit">
               Cerrar sesión

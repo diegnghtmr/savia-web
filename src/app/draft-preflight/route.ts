@@ -3,6 +3,7 @@ import {
   saveBudget,
   type Binding,
 } from "@/app/_actions/budgets";
+import { saveData } from "@/app/_actions/data";
 import { payDebt, type PaymentBinding } from "@/app/_actions/debt-payment";
 import { recordRate } from "@/app/_actions/exchange-rates";
 import { saveFund, type FundBinding } from "@/app/_actions/funds";
@@ -63,6 +64,10 @@ function reserve(form: FormData) {
         return saveFund(meta.bound as FundBinding, null, form);
       case "debt-payment":
         return payDebt(meta.bound as PaymentBinding, null, form);
+      case "data": {
+        const bound = meta.bound as Parameters<typeof saveData>[0];
+        return saveData(bound, null, form);
+      }
       default:
         throw new Error("Unsupported draft command");
     }

@@ -11,6 +11,7 @@ import { handleBudgets } from "./budgets.mjs";
 import { handleFunds } from "./funds.mjs";
 import { handleDebts } from "./debts.mjs";
 import { handleScenarios } from "./scenarios.mjs";
+import { handleDataJobs } from "./data-jobs.mjs";
 
 // This server is test-only and accepts only credentials and sessions it issues.
 const accounts = [
@@ -106,6 +107,7 @@ async function handle(request, reply) {
         funds: new Map(),
         debts: new Map(),
         scenarios: new Map(),
+        dataJobs: new Map(),
       });
       return json(200, {
         user,
@@ -276,6 +278,29 @@ async function handle(request, reply) {
       });
     }
     default:
+      if (
+        /^\/v1\/(?:import-jobs|receipts|report-definitions|report-runs|export-jobs|backup-jobs)(?:\/|$)/.test(
+          url.pathname,
+        )
+      ) {
+        if (!session) return unauthorized();
+        const space = session.workspaces.find(
+          ({ id }) => id === request.headers["x-workspace-id"],
+        );
+        return space
+          ? handleDataJobs({
+              request,
+              url,
+              json,
+              session,
+              space,
+              readJson,
+              activeAccounts: () =>
+                accountsFor(session, space, new Date().toISOString()),
+              ledger: () => ledgerFor(session, space),
+            })
+          : json(403, {});
+      }
       if (
         /^(?:GET \/v1\/scenarios|POST \/v1\/scenarios(?:\/[^/]+\/runs)?)$/.test(
           route,

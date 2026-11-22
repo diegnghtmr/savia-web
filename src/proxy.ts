@@ -17,5 +17,8 @@ export const config = {
     "/funds/new",
     "/funds/:id/contribute",
     "/debts/:id/pay",
+    "/imports/:path*",
+    "/receipts/:path*",
+    "/reports/:path*",
   ],
 };
