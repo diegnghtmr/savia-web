@@ -237,7 +237,14 @@ export async function persistentDraft(
     challenge: "",
     permit: "",
   };
-  const confirm = draftConfirmation(form);
+  const submittedConfirmation = draftConfirmation(form);
+  // Preparation has already consumed this confirmation by reserving its
+  // generation in the browser. A dispatch cannot spend it a second time,
+  // even when the browser still has the pre-dispatch cookie and form.
+  const confirm =
+    submittedConfirmation === entry.generation
+      ? undefined
+      : submittedConfirmation;
   const uncertain =
     !saved &&
     (seed.policy === "legacy" ||
@@ -249,10 +256,12 @@ export async function persistentDraft(
     !!confirm ||
     serverTime === null ||
     (entry.status === "pending" && !fresh(entry.since, serverTime));
-  const explicit =
-    prepared && !!confirm && entry.generation === confirm && !entry.challenge;
-  if (needsChoice && !explicit) {
-    if (!entry.challenge || confirm !== entry.challenge) {
+  if (needsChoice) {
+    if (
+      !entry.challenge ||
+      confirm !== entry.challenge ||
+      (preparing && serverTime === null)
+    ) {
       entry = {
         ...entry,
         status: "pending",
