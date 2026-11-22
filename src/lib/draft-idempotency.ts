@@ -51,6 +51,7 @@ type State = { history: Buffer; entries: Entry[]; valid: boolean };
 type DraftAttempt = {
   key: string;
   confirmation?: string;
+  payload: object;
   receipt: (id: string, resource?: string) => void;
 };
 
@@ -202,7 +203,11 @@ export async function persistentDraft(
   userId: string,
   route: string,
   payload: object,
-  verification?: { serverTime: number | null; form: FormData },
+  verification?: {
+    serverTime: number | null;
+    form: FormData;
+    equivalents?: readonly object[];
+  },
 ): Promise<DraftAttempt | null> {
   if (!verification) {
     const scope = await verifiedDraftScope();
@@ -216,14 +221,26 @@ export async function persistentDraft(
   const preparing = isDraftPreparation();
   const state = load(store);
   const scope = activeScope(seed.id, workspaceId, userId);
-  const hash = digest([seed.id, userId, workspaceId, route, payload]).slice(
-    0,
-    32,
-  );
-  const saved = state.entries.find(
-    (entry) => entry.hash === hash && entry.scope === scope,
+  const candidates = [payload, ...(verification.equivalents ?? [])].map(
+    (body) => {
+      const hash = digest([seed.id, userId, workspaceId, route, body]).slice(
+        0,
+        32,
+      );
+      const entry = state.entries.find(
+        (entry) => entry.hash === hash && entry.scope === scope,
+      );
+      return { body, hash, entry };
+    },
   );
   const ticket = form.get("draftPrepared");
+  // Dispatch must use exactly the reservation chosen during preparation.
+  const reserved = preparing
+    ? undefined
+    : candidates.find(({ entry }) => entry?.permit && entry.permit === ticket);
+  const pending = candidates.find(({ entry }) => entry?.status === "pending");
+  const selected = reserved ?? pending ?? candidates[0];
+  const { hash, entry: saved, body } = selected;
   const prepared = !preparing && !!saved?.permit && saved.permit === ticket;
   if (!preparing && seed.policy && !prepared) return null;
 
@@ -250,7 +267,7 @@ export async function persistentDraft(
     !saved &&
     (seed.policy === "legacy" ||
       (!!seed.policy && !state.valid) ||
-      wasForgotten(state, hash));
+      candidates.some(({ hash }) => wasForgotten(state, hash)));
   const needsChoice =
     uncertain ||
     !!entry.challenge ||
@@ -273,7 +290,12 @@ export async function persistentDraft(
         permit: "",
       };
       if (!save(store, state, entry, serverTime)) return null;
-      return { confirmation: entry.challenge, key: "", receipt: () => {} };
+      return {
+        confirmation: entry.challenge,
+        key: "",
+        payload: body,
+        receipt: () => {},
+      };
     }
     oneShotReservation = preparing && serverTime === null;
     entry = {
@@ -313,6 +335,7 @@ export async function persistentDraft(
   draftReserved(entry.permit);
   return {
     key,
+    payload: body,
     receipt: (id: string, resource = id) =>
       save(store, load(store), { ...entry, receipt: id, resource }, serverTime),
   };

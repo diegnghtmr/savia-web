@@ -62,8 +62,8 @@ export async function payDebt(
   if (principal < zero || principal + interest + fee !== totalMinor)
     return invalid;
 
-  // Serialize the resolved split once for both draft identity and dispatch.
-  // Preserve the backend's compact all-principal representation and omit zeros.
+  // Use the compact canonical split for new drafts. Pending pre-normalization
+  // drafts must keep their original ordering, optional fields, and key.
   const money = (minor: bigint) => ({
     amountMinor: minor.toString(),
     currency,
@@ -76,19 +76,36 @@ export async function payDebt(
           ...(interest > zero && { interestAmount: money(interest) }),
           ...(fee > zero && { feeAmount: money(fee) }),
         };
+  const payment = (fields: object) => ({
+    accountId,
+    totalAmount: { amountMinor: total, currency },
+    ...fields,
+    occurredAt: `${input.date}T00:00:00Z`,
+  });
+  const canonical = payment(split);
+  const amounts = [principal, interest, fee];
+  const legacy: (typeof canonical)[] = [];
+  for (let mask = 1; mask < 1 << parts.length; mask++) {
+    const included = (index: number) => (mask & (1 << index)) !== 0;
+    if (amounts.some((value, i) => value > zero && !included(i))) continue;
+    const body = payment(
+      Object.fromEntries(
+        parts.flatMap((part, i) =>
+          included(i) ? [[part, money(amounts[i])]] : [],
+        ),
+      ),
+    );
+    if (JSON.stringify(body) !== JSON.stringify(canonical)) legacy.push(body);
+  }
   return submitFinancialDraft(
     bound.workspaceId,
     `debts/${bound.id.toLowerCase()}/payments`,
-    {
-      accountId,
-      totalAmount: { amountMinor: total, currency },
-      ...split,
-      occurredAt: `${input.date}T00:00:00Z`,
-    },
+    canonical,
     {
       workspace: "El espacio activo cambió. Vuelve a Deudas.",
       failed: "No se pudo registrar el pago. Vuelve a intentarlo.",
     },
     form,
+    legacy,
   );
 }

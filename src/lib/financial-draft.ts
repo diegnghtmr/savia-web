@@ -40,6 +40,7 @@ export async function submitFinancialDraft(
   draft: object,
   errors: { workspace: string; failed: string },
   form: FormData,
+  equivalents?: readonly object[],
 ): Promise<FinancialResult> {
   const profile = await requireProfile();
   if (profile.kind === "failed")
@@ -51,12 +52,12 @@ export async function submitFinancialDraft(
     profile.userId,
     route,
     draft,
-    { serverTime: scope.serverTime, form },
+    { serverTime: scope.serverTime, form, equivalents },
   );
   if (!key) return { error: "Recarga la página antes de volver a intentarlo." };
   if (key.confirmation)
     return { error: draftWarning, confirmation: key.confirmation };
-  const id = await scope.createFinancialRecord(route, draft, key.key);
+  const id = await scope.createFinancialRecord(route, key.payload, key.key);
   if (!id) return { error: errors.failed };
   key.receipt(id);
   return { receipt: id };

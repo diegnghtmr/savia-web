@@ -1,6 +1,8 @@
 import { payDebt } from "@/app/_actions/debt-payment";
 import { POST as reserve } from "@/app/draft-preflight/route";
 import { admitDraftSeed } from "@/lib/draft-idempotency";
+import { prepareDraft } from "@/lib/draft-preparation";
+import { submitFinancialDraft } from "@/lib/financial-draft";
 import { requireSession } from "@/lib/session";
 
 const workspaceId = "80000000-0000-4000-8000-000000000001";
@@ -254,3 +256,49 @@ it("omits all split fields when the total should go entirely to principal", asyn
     occurredAt: "2026-01-12T00:00:00Z",
   });
 });
+
+// Reviewer regression (verify mwrd7bv0). Append to tests/debt-payment.test.ts; import prepareDraft from @/lib/draft-preparation and submitFinancialDraft from @/lib/financial-draft.
+it.each([
+  { principal: "300", interest: "", fee: "" },
+  { principal: "200", interest: "100", fee: "0" },
+])(
+  "replays the original payment key and body across a split upgrade: %j",
+  async ({ principal, interest, fee }) => {
+    expect(await admitDraftSeed(workspaceId)).toBe(true);
+    const cop = (amountMinor: string) => ({ amountMinor, currency: "COP" });
+    const legacy = {
+      accountId: account,
+      totalAmount: cop("300"),
+      principalAmount: cop(principal),
+      ...(interest && { interestAmount: cop(interest) }),
+      ...(fee && { feeAmount: cop(fee) }),
+      occurredAt: "2026-01-12T00:00:00Z",
+    };
+    const original = new FormData();
+    const sendLegacy = () =>
+      submitFinancialDraft(
+        workspaceId,
+        `debts/${id}/payments`,
+        legacy,
+        { workspace: "wrong workspace", failed: "payment failed" },
+        original,
+      );
+    const reservation = await prepareDraft(sendLegacy);
+    expect(reservation.prepared).toEqual(expect.any(String));
+    original.set("draftPrepared", reservation.prepared!);
+    const reserved = new Map(jar);
+    expect(await sendLegacy()).toEqual({ receipt: id });
+    jar = reserved;
+
+    const retry = form({
+      totalAmount: "3",
+      principalAmount: principal === "300" ? "3" : "2",
+      interestAmount: interest ? "1" : "",
+      feeAmount: fee,
+    });
+    await losePaymentReply(retry);
+    expect(writes).toEqual([writes[0], writes[0]]);
+    expect(payments.size).toBe(1);
+    expect(payments.get(writes[0])).toEqual(legacy);
+  },
+);
