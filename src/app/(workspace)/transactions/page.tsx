@@ -42,6 +42,9 @@ export default async function TransactionsPage({
     <>
       <p className="eyebrow">Espacio: {scope.name}</p>
       <h1>Transacciones</h1>
+      <Link className="call-to-action" href="/transactions/new">
+        Nueva transacción
+      </Link>
       <form action="/transactions" method="get">
         {selects.map(([name, label, options]) => {
           const selected = filters.get(name) ?? "";

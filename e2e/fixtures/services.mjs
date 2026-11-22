@@ -151,7 +151,7 @@ async function handle(request, reply) {
         return handleAccounts(request, url, session, json);
       }
       if (
-        /^GET \/v1\/(transactions(?:\/[^/]+)?|categories|payees|tags)$/.test(
+        /^(?:GET \/v1\/(?:transactions(?:\/[^/]+)?|categories|payees|tags)|POST \/v1\/transactions(?:\/[^/]+\/void)?|PATCH \/v1\/transactions\/[^/]+)$/.test(
           route,
         )
       ) {
@@ -159,7 +159,9 @@ async function handle(request, reply) {
         const space = session.workspaces.find(
           ({ id }) => id === request.headers["x-workspace-id"],
         );
-        return space ? handleLedger(session, space, url, json) : json(403, {});
+        return space
+          ? handleLedger(session, space, request, url, json)
+          : json(403, {});
       }
       return json(404, { message: "Unsupported fixture route" });
   }
@@ -279,8 +281,10 @@ async function handleAccounts(request, url, session, json) {
   });
 }
 
-function handleLedger(session, space, url, json) {
-  const [account] = accountsFor(session, space, new Date().toISOString());
+async function handleLedger(session, space, request, url, json) {
+  const now = new Date().toISOString();
+  const accounts = accountsFor(session, space, now);
+  const [account] = accounts;
   const named = (name) => ({ id: randomUUID(), name });
   if (!session.ledger.has(space.id)) {
     const category = named("Alimentación"),
@@ -317,11 +321,72 @@ function handleLedger(session, space, url, json) {
     });
   }
   const ledger = session.ledger.get(space.id);
-  const [, , resource, id] = url.pathname.split("/");
-  if (id) {
-    const row = ledger.transactions.find((entry) => entry.id === id);
-    return row ? json(200, row, { etag: '"1"' }) : json(404, {});
+  const [, , resource, id, operation] = url.pathname.split("/");
+  const index = ledger.transactions.findIndex((entry) => entry.id === id);
+  const row = ledger.transactions[index];
+  const etag = (entry) => ({ etag: `"${entry.version}"` });
+  if (request.method !== "GET") {
+    const key = request.headers["idempotency-key"];
+    if (!uuid.test(key)) return json(400, {});
+    const body = await readJson(request);
+    const replayKey = `ledger:${space.id}:${request.method}:${url.pathname}:${key}`;
+    const draft = JSON.stringify(body);
+    const previous = session.replays.get(replayKey);
+    if (previous)
+      return previous.draft === draft
+        ? json(previous.status, previous.created)
+        : json(409, {});
+    let created;
+    if (id) {
+      if (!row) return json(404, {});
+      if (request.headers["if-match"] !== etag(row).etag) return json(412, {});
+      if (
+        ["voided", "reconciled"].includes(row.status) ||
+        (operation === "void" && row.status === "draft")
+      )
+        return json(409, {});
+      if (
+        operation === "void" &&
+        (typeof body.reason !== "string" || body.reason.length < 3)
+      )
+        return json(422, {});
+      created = {
+        ...row,
+        ...(operation === "void" ? { status: "voided" } : body),
+        version: row.version + 1,
+        updatedAt: now,
+      };
+      ledger.transactions[index] = created;
+    } else {
+      const source = accounts.find(
+        (candidate) => candidate.id === body.accountId,
+      );
+      if (
+        !source ||
+        source.status !== "active" ||
+        body.amount?.currency !== source.currency ||
+        !/^-?\d+$/.test(body.amount.amountMinor)
+      )
+        return json(422, {});
+      created = {
+        ...body,
+        id: randomUUID(),
+        status: "confirmed",
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+      };
+      ledger.transactions.unshift(created);
+    }
+    const status = id ? 200 : 201;
+    session.replays.set(replayKey, { draft, status, created });
+    return json(
+      status,
+      created,
+      operation === "void" ? undefined : etag(created),
+    );
   }
+  if (id) return row ? json(200, row, etag(row)) : json(404, {});
   const get = (key) => url.searchParams.get(key);
   const rows = ledger[resource];
   if (resource !== "transactions")
@@ -334,7 +399,7 @@ function handleLedger(session, space, url, json) {
       (!get("from") || row.occurredAt.slice(0, 10) >= get("from")) &&
       (!get("to") || row.occurredAt.slice(0, 10) <= get("to")) &&
       (!get("query") ||
-        row.description.toLowerCase().includes(get("query").toLowerCase())),
+        row.description?.toLowerCase().includes(get("query").toLowerCase())),
   );
   const cursor = (row) => encode([row.createdAt, row.id]);
   const offset = get("cursor")
