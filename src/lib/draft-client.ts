@@ -9,7 +9,13 @@ export function withDraftLock<T>(run: () => Promise<T>) {
     : run();
 }
 
-type DraftKind = "transaction" | "transfer" | "rate" | "budget" | "allocations";
+type DraftKind =
+  | "transaction"
+  | "transfer"
+  | "rate"
+  | "budget"
+  | "allocations"
+  | "fund";
 export const unavailableDraft =
   "Recarga la página antes de volver a intentarlo.";
 

@@ -7,6 +7,7 @@ import {
   RECOVERY_USER,
 } from "./accounts.mjs";
 import { handleBudgets } from "./budgets.mjs";
+import { handleFunds } from "./funds.mjs";
 
 // This server is test-only and accepts only credentials and sessions it issues.
 const accounts = [E2E_USER, ONBOARDED_USER, RECOVERY_USER, DRAFT_CLOCK_USER];
@@ -92,6 +93,7 @@ async function handle(request, reply) {
         ledger: new Map(),
         rates: new Map(),
         budgets: new Map(),
+        funds: new Map(),
       });
       return json(200, {
         user,
@@ -214,6 +216,28 @@ async function handle(request, reply) {
               space,
               readJson,
               categoryId: ledgerFor(session, space).categories[0].id,
+            })
+          : json(403, {});
+      }
+      if (
+        /^(?:GET \/v1\/funds|POST \/v1\/funds(?:\/[^/]+\/contributions)?)$/.test(
+          route,
+        )
+      ) {
+        if (!session) return unauthorized();
+        const space = session.workspaces.find(
+          ({ id }) => id === request.headers["x-workspace-id"],
+        );
+        return space
+          ? handleFunds({
+              request,
+              url,
+              json,
+              session,
+              space,
+              readJson,
+              accounts: () =>
+                accountsFor(session, space, new Date().toISOString()),
             })
           : json(403, {});
       }

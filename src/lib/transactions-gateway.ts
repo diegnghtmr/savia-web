@@ -31,6 +31,13 @@ const keys = (value: unknown) =>
   Array.isArray(value) ? value.filter(id).map((key) => key.toLowerCase()) : [];
 const badRequest = Symbol("bad-request");
 
+export type FinancialRoute =
+  | "transfers"
+  | "currency-exchanges"
+  | "exchange-rates"
+  | "funds"
+  | `funds/${string}/contributions`;
+
 export function ledgerFilters(input: SearchParams) {
   const filters = viewFilters(input, {
     accountId: id,
@@ -232,7 +239,7 @@ export async function ledgerScope(token: string) {
       return names ? { currencies, names } : null;
     },
     async createFinancialRecord(
-      route: "transfers" | "currency-exchanges" | "exchange-rates",
+      route: FinancialRoute,
       draft: object,
       key: string,
     ) {

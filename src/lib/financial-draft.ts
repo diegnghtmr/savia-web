@@ -3,7 +3,7 @@ import "server-only";
 import { persistentDraft } from "./draft-idempotency";
 import { draftWarning } from "./draft-retry";
 import { requireProfile } from "./require-profile";
-import { ledgerScope } from "./transactions-gateway";
+import { ledgerScope, type FinancialRoute } from "./transactions-gateway";
 
 export function fields<K extends string>(form: FormData, keys: readonly K[]) {
   const result = {} as Record<K, string>;
@@ -36,7 +36,7 @@ export type FinancialResult = {
 
 export async function submitFinancialDraft(
   workspaceId: string,
-  route: "transfers" | "currency-exchanges" | "exchange-rates",
+  route: FinancialRoute,
   draft: object,
   errors: { workspace: string; failed: string },
   form: FormData,

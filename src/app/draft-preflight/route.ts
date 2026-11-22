@@ -4,6 +4,7 @@ import {
   type Binding,
 } from "@/app/_actions/budgets";
 import { recordRate } from "@/app/_actions/exchange-rates";
+import { saveFund, type FundBinding } from "@/app/_actions/funds";
 import {
   saveTransactionAction,
   type TransactionSubmission,
@@ -57,6 +58,8 @@ function reserve(form: FormData) {
         return saveBudget(meta.bound as Binding, null, form);
       case "allocations":
         return saveAllocations(meta.bound as Binding, null, form);
+      case "fund":
+        return saveFund(meta.bound as FundBinding, null, form);
       default:
         throw new Error("Unsupported draft command");
     }

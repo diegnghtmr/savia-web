@@ -14,5 +14,7 @@ export const config = {
     "/exchange-rates",
     "/budgets/new",
     "/budgets/:id/edit/:version",
+    "/funds/new",
+    "/funds/:id/contribute",
   ],
 };
