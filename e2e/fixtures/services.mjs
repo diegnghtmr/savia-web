@@ -10,6 +10,7 @@ import {
 import { handleBudgets } from "./budgets.mjs";
 import { handleFunds } from "./funds.mjs";
 import { handleDebts } from "./debts.mjs";
+import { handleScenarios } from "./scenarios.mjs";
 
 // This server is test-only and accepts only credentials and sessions it issues.
 const accounts = [
@@ -104,6 +105,7 @@ async function handle(request, reply) {
         budgets: new Map(),
         funds: new Map(),
         debts: new Map(),
+        scenarios: new Map(),
       });
       return json(200, {
         user,
@@ -171,7 +173,122 @@ async function handle(request, reply) {
       session.replays.set(key, { draft, created });
       return json(201, created);
     }
+    case "GET /v1/recurring-rules":
+    case "GET /v1/subscriptions": {
+      if (!session) return unauthorized();
+      const space = session.workspaces.find(
+        ({ id }) => id === request.headers["x-workspace-id"],
+      );
+      if (!space) return json(403, {});
+      const recurring = route.endsWith("recurring-rules");
+      if (!recurring && url.searchParams.get("status") !== "detected")
+        return json(400, {});
+      const item = recurring
+        ? {
+            id: space.id,
+            name: "Internet de Casa",
+            active: true,
+            nextOccurrenceAt: "2099-01-01T02:00:00Z",
+            behavior: "remind",
+            frequency: "monthly",
+          }
+        : {
+            id: space.id,
+            payeeName: "Música de Casa",
+            status: "detected",
+            currentAmount: {
+              amountMinor: "12345",
+              currency: space.baseCurrency,
+            },
+            frequency: "monthly",
+          };
+      return json(200, {
+        items: space.name === "Casa" ? [item] : [],
+        pageInfo: { hasNextPage: false },
+      });
+    }
+    case "GET /v1/analytics/advanced":
+    case "GET /v1/analytics/cash-flow":
+    case "GET /v1/analytics/summary": {
+      if (!session) return unauthorized();
+      const space = session.workspaces.find(
+        ({ id }) => id === request.headers["x-workspace-id"],
+      );
+      if (!space) return json(403, {});
+      const periodStart = url.searchParams.get("from");
+      const periodEnd = url.searchParams.get("to");
+      if (!periodStart || !periodEnd) return json(400, {});
+      const money = (amountMinor) => ({
+        currency: space.baseCurrency,
+        amountMinor,
+      });
+      if (route.endsWith("advanced")) {
+        if (url.searchParams.get("metric") !== "balance_projection")
+          return json(400, {});
+        return json(200, {
+          metric: "balance_projection",
+          generatedAt: new Date().toISOString(),
+          data: {
+            basisMonths: 2,
+            openingBalanceMinor: "10000",
+            months: [
+              {
+                month: `${periodStart.slice(0, 7)}-01`,
+                projectedBalanceMinor: "-9901",
+              },
+            ],
+          },
+        });
+      }
+      if (route.endsWith("cash-flow")) {
+        if (url.searchParams.get("granularity") !== "month")
+          return json(400, {});
+        return json(200, {
+          series: [
+            {
+              period: `${periodStart.slice(0, 7)}-01`,
+              value: money("227655"),
+              secondaryValue: money("227655"),
+            },
+          ],
+          categories:
+            space.name === "Casa"
+              ? [
+                  {
+                    categoryId: space.id,
+                    categoryName: "Alimentación",
+                    amount: money("12345"),
+                    percentage: 100,
+                  },
+                ]
+              : [],
+        });
+      }
+      return json(200, {
+        periodStart,
+        periodEnd,
+        baseCurrency: space.baseCurrency,
+        netWorth: money(space.name === "Casa" ? "900719925474099301" : "0"),
+        income: money("240000"),
+        expenses: money("12345"),
+        savingsCapacity: money("227655"),
+        budgetUtilizationPercent: 87.25,
+      });
+    }
     default:
+      if (
+        /^(?:GET \/v1\/scenarios|POST \/v1\/scenarios(?:\/[^/]+\/runs)?)$/.test(
+          route,
+        )
+      ) {
+        if (!session) return unauthorized();
+        const space = session.workspaces.find(
+          ({ id }) => id === request.headers["x-workspace-id"],
+        );
+        return space
+          ? handleScenarios({ request, url, json, session, space, readJson })
+          : json(403, {});
+      }
       if (url.pathname.startsWith("/v1/accounts")) {
         if (!session) return unauthorized();
         return handleAccounts(request, url, session, json);

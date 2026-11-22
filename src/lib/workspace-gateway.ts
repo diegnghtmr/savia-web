@@ -8,6 +8,7 @@ export const WORKSPACE_ID =
 interface WorkspaceSummary {
   id: string;
   name: string;
+  baseCurrency?: string;
   serverTime: number | null;
 }
 
@@ -69,7 +70,15 @@ export async function listWorkspaces(
           !name.trim()
         )
           return { kind: "failed" };
-        items.set(id, { id, name, serverTime });
+        const currency: unknown = entry?.baseCurrency;
+        items.set(id, {
+          id,
+          name,
+          serverTime,
+          ...(typeof currency === "string" && /^[A-Z]{3}$/.test(currency)
+            ? { baseCurrency: currency }
+            : {}),
+        });
       }
       const { hasNextPage, nextCursor } = pageInfo as Record<string, unknown>;
       if (hasNextPage === false)
