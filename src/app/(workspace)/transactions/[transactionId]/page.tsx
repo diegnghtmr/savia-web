@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
+import { DraftReceipt } from "@/app/_components/draft-receipt";
 import { TransactionForm } from "@/app/_components/transaction-form";
+import { hasDraftReceipt } from "@/lib/draft-idempotency";
 import { money } from "@/lib/account-money";
 import { requireProfile } from "@/lib/require-profile";
 import { ledgerScope } from "@/lib/transactions-gateway";
@@ -49,6 +51,7 @@ export default async function TransactionPage({
       </Link>
       <p className="eyebrow">Espacio: {scope.name}</p>
       <h1>{row.description || row.type}</h1>
+      {(await hasDraftReceipt(id)) && <DraftReceipt id={id} />}
       <TransactionSummary row={row} labels={labels} />
       {row.notes && (
         <>

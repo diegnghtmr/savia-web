@@ -5,7 +5,13 @@ import { saveTransactionAction } from "@/app/_actions/transactions";
 import { requireSession } from "@/lib/session";
 
 vi.mock("next/headers", () => ({
-  cookies: async () => ({ get: () => ({ value: "other-workspace" }) }),
+  cookies: async () => ({
+    get: (name: string) =>
+      name === "savia-draft-seed"
+        ? { value: "80000000-0000-4000-8000-000000000001" }
+        : { value: "other-workspace" },
+    set: vi.fn(),
+  }),
 }));
 vi.mock("@/lib/session", () => ({
   requireSession: vi.fn(async () => ({ accessToken: "offline-token" })),

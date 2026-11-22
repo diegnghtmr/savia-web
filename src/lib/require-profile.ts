@@ -12,5 +12,5 @@ export async function requireProfile() {
   if (profile.kind === "unauthenticated") redirect("/sign-in");
   return profile.kind === "failed"
     ? ({ kind: "failed" } as const)
-    : ({ kind: "ready", accessToken } as const);
+    : ({ kind: "ready", accessToken, userId: profile.userId } as const);
 }

@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { TransactionForm } from "@/app/_components/transaction-form";
 import { requireProfile } from "@/lib/require-profile";
@@ -30,7 +29,6 @@ export default async function NewTransactionPage() {
           key={scope.workspaceId}
           submission={{
             mode: "create",
-            nonce: randomUUID(),
             workspaceId: scope.workspaceId,
             currencies: labels.currencies,
           }}

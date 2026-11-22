@@ -3,7 +3,7 @@ import "server-only";
 import { loadServerConfig } from "./server-config";
 
 type CurrentUserResult =
-  | { kind: "onboarded" }
+  | { kind: "onboarded"; userId: string }
   | { kind: "notOnboarded" }
   | { kind: "unauthenticated" }
   | { kind: "failed" };
@@ -49,7 +49,7 @@ export async function getCurrentUser(
         typeof body.id === "string" &&
         body.id.trim()
       ) {
-        return { kind: "onboarded" };
+        return { kind: "onboarded", userId: body.id };
       }
     }
   } catch {

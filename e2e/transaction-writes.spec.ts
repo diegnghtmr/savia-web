@@ -56,3 +56,26 @@ test("creates, edits and voids, rejecting a stale edit", async ({
     page.getByRole("link", { name: "Editar transacción" }),
   ).toHaveCount(0);
 });
+
+test("a confirmed create lets the user submit a fresh identical transaction", async ({
+  page,
+}) => {
+  await signInAs(page, ONBOARDED_USER.email, ONBOARDED_USER.password);
+  const paths: string[] = [];
+  for (let index = 0; index < 2; index++) {
+    await page.goto("/transactions/new", { waitUntil: "networkidle" });
+    await page.getByLabel("Tipo").selectOption("expense");
+    await page
+      .getByLabel("Cuenta", { exact: true })
+      .selectOption({ label: "Caja (COP)" });
+    await page.getByLabel("Importe").fill("32,10");
+    await page.getByLabel("Fecha (UTC)").fill("2026-01-12");
+    await page.getByLabel("Descripción").fill("Dos compras idénticas");
+    await page.getByRole("button", { name: "Crear transacción" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Dos compras idénticas" }),
+    ).toBeVisible();
+    paths.push(page.url());
+  }
+  expect(paths[1]).not.toBe(paths[0]);
+});

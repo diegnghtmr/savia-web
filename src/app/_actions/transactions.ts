@@ -1,20 +1,26 @@
 "use server";
 
-import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { decimalToMinor } from "@/lib/account-money";
+import { draftKey, persistentDraft } from "@/lib/draft-idempotency";
 import { requireProfile } from "@/lib/require-profile";
 import { ledgerScope, types } from "@/lib/transactions-gateway";
 import { calendarDate } from "@/lib/view-filters";
 import { WORKSPACE_ID } from "@/lib/workspace-gateway";
 
-type Bound = { workspaceId: string; nonce: string };
+type Bound = { workspaceId: string };
 export type TransactionSubmission = Bound &
   (
     | { mode: "create"; currencies: Record<string, string> }
-    | { mode: "edit"; id: string; etag: string; occurredAt: string }
-    | { mode: "void"; id: string; etag: string }
+    | {
+        mode: "edit";
+        id: string;
+        etag: string;
+        occurredAt: string;
+        nonce: string;
+      }
+    | { mode: "void"; id: string; etag: string; nonce: string }
   );
 const uuid = (value: unknown): value is string =>
   typeof value === "string" && WORKSPACE_ID.test(value);
@@ -92,10 +98,10 @@ export async function saveTransactionAction(
   if (
     !bound ||
     !["create", "edit", "void"].includes(bound.mode) ||
-    !uuid(bound.nonce) ||
     !uuid(bound.workspaceId) ||
     (bound.mode !== "create" &&
-      (!uuid(bound.id) ||
+      (!uuid(bound.nonce) ||
+        !uuid(bound.id) ||
         typeof bound.etag !== "string" ||
         !/^"[1-9]\d{0,9}"$/.test(bound.etag))) ||
     (bound.mode === "edit" && typeof bound.occurredAt !== "string")
@@ -109,10 +115,21 @@ export async function saveTransactionAction(
   if (scope?.workspaceId !== bound.workspaceId)
     return "El espacio activo cambió. Vuelve a Transacciones.";
   const id = bound.mode === "create" ? "" : bound.id.toLowerCase();
-  const hex = createHash("sha256")
-    .update(JSON.stringify([bound.nonce, bound.mode, id, draft]))
-    .digest("hex");
-  const key = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+  const saved =
+    bound.mode === "create"
+      ? await persistentDraft(
+          scope.workspaceId,
+          profile.userId,
+          "transactions",
+          draft,
+        )
+      : null;
+  if (bound.mode === "create" && !saved)
+    return "Recarga la página antes de volver a intentarlo.";
+  const key =
+    bound.mode === "create"
+      ? saved!.key
+      : draftKey([bound.nonce, bound.mode, id, draft]);
   const result = await scope.mutate(
     id ? `/${id}${bound.mode === "void" ? "/void" : ""}` : "",
     bound.mode === "edit" ? "PATCH" : "POST",
@@ -127,6 +144,7 @@ export async function saveTransactionAction(
     return "No se puede realizar el cambio. Revisa el estado de la transacción.";
   if (!result || (id && result.id !== id))
     return "No pudimos guardar la transacción. Vuelve a intentarlo.";
+  saved?.receipt(result.id);
   revalidatePath("/transactions");
   redirect(`/transactions/${result.id}`);
 }

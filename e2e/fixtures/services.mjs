@@ -83,6 +83,7 @@ async function handle(request, reply) {
         accounts: new Map(),
         openings: new Map(),
         ledger: new Map(),
+        rates: new Map(),
       });
       return json(200, {
         user,
@@ -161,6 +162,30 @@ async function handle(request, reply) {
         );
         return space
           ? handleLedger(session, space, request, url, json)
+          : json(403, {});
+      }
+      if (
+        route === "POST /v1/transfers" ||
+        route === "POST /v1/currency-exchanges"
+      ) {
+        if (!session) return unauthorized();
+        const space = session.workspaces.find(
+          ({ id }) => id === request.headers["x-workspace-id"],
+        );
+        return space
+          ? handleMovement(request, session, space, url.pathname, json)
+          : json(403, {});
+      }
+      if (
+        route === "GET /v1/exchange-rates" ||
+        route === "POST /v1/exchange-rates"
+      ) {
+        if (!session) return unauthorized();
+        const space = session.workspaces.find(
+          ({ id }) => id === request.headers["x-workspace-id"],
+        );
+        return space
+          ? handleRates(request, session, space, url, json)
           : json(403, {});
       }
       return json(404, { message: "Unsupported fixture route" });
@@ -414,6 +439,111 @@ async function handleLedger(session, space, request, url, json) {
       nextCursor: hasNextPage ? cursor(results[offset]) : null,
     },
   });
+}
+
+async function handleMovement(request, session, space, path, json) {
+  const accounts = accountsFor(session, space, new Date().toISOString());
+  const key = request.headers["idempotency-key"];
+  if (!uuid.test(key)) return json(400, {});
+  const body = await readJson(request);
+  const origin = accounts.find(({ id }) => id === body.sourceAccountId);
+  const target = accounts.find(({ id }) => id === body.destinationAccountId);
+  const cross = path === "/v1/currency-exchanges";
+  if (
+    !origin ||
+    !target ||
+    origin === target ||
+    cross !== (origin.currency !== target.currency) ||
+    (cross
+      ? body.sourceAmount?.currency !== origin.currency ||
+        body.destinationAmount?.currency !== target.currency ||
+        !body.executedRate
+      : body.amount?.currency !== origin.currency) ||
+    (body.fee && body.fee.currency !== origin.currency)
+  )
+    return json(422, {});
+  const replay = `${space.id}:${path}:${key}`;
+  const draft = JSON.stringify(body);
+  const prior = session.replays.get(replay);
+  if (prior)
+    return prior.draft === draft ? json(201, prior.created) : json(409, {});
+  const created = { ...body, id: randomUUID() };
+  session.replays.set(replay, { draft, created });
+  return json(201, created);
+}
+
+async function handleRates(request, session, space, url, json) {
+  if (!session.rates.has(space.id))
+    session.rates.set(
+      space.id,
+      space.name === "Casa"
+        ? [
+            {
+              id: randomUUID(),
+              baseCurrency: "USD",
+              quoteCurrency: "COP",
+              rate: "4111.005",
+              effectiveAt: "2026-11-15T12:00:00Z",
+              source: "frankfurter",
+              manual: false,
+              isStale: true,
+              ageHours: 121.5,
+            },
+          ]
+        : [],
+    );
+  const rows = session.rates.get(space.id);
+  if (request.method === "GET") {
+    const get = (field) => url.searchParams.get(field);
+    return json(
+      200,
+      rows.filter(
+        (row) =>
+          ["baseCurrency", "quoteCurrency"].every(
+            (key) => !get(key) || get(key) === row[key],
+          ) &&
+          (!get("from") || row.effectiveAt.slice(0, 10) >= get("from")) &&
+          (!get("to") || row.effectiveAt.slice(0, 10) <= get("to")),
+      ),
+    );
+  }
+  const key = request.headers["idempotency-key"];
+  if (!uuid.test(key)) return json(400, {});
+  const { baseCurrency, quoteCurrency, rate, effectiveAt } =
+    await readJson(request);
+  const draft = JSON.stringify({
+    baseCurrency,
+    quoteCurrency,
+    rate,
+    effectiveAt,
+  });
+  const replay = `rates:${space.id}:${key}`;
+  const prior = session.replays.get(replay);
+  if (prior)
+    return prior.draft === draft ? json(201, prior.created) : json(409, {});
+  if (
+    rows.some(
+      (row) =>
+        row.baseCurrency === baseCurrency &&
+        row.quoteCurrency === quoteCurrency &&
+        row.effectiveAt === effectiveAt,
+    )
+  )
+    return json(409, {});
+  const created = {
+    id: randomUUID(),
+    baseCurrency,
+    quoteCurrency,
+    rate,
+    effectiveAt,
+    source: "manual",
+    manual: true,
+    isStale: false,
+    ageHours: 0,
+  };
+  rows.unshift(created);
+  session.replays.set(replay, { draft, created });
+  return json(201, created);
 }
 
 createServer((request, reply) => {

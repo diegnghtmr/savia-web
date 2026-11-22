@@ -218,6 +218,27 @@ export async function ledgerScope(token: string) {
         : null;
     },
     workspaceId,
+    async listExchangeRates(query: URLSearchParams) {
+      return read(`exchange-rates${query.size ? `?${query}` : ""}`);
+    },
+    async activeAccounts() {
+      const names = await catalog("accounts");
+      return names ? { currencies, names } : null;
+    },
+    async createFinancialRecord(
+      route: "transfers" | "currency-exchanges" | "exchange-rates",
+      draft: object,
+      key: string,
+    ) {
+      const response = await request(route, {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": key },
+        body: JSON.stringify(draft),
+      });
+      if (response?.status !== 201) return null;
+      const body: unknown = await response.json().catch(() => null);
+      return object(body) && id(body.id) ? body.id.toLowerCase() : null;
+    },
     async mutate(
       route: string,
       method: "POST" | "PATCH",
