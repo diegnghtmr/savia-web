@@ -5,15 +5,16 @@ import {
   fields,
   rateDecimal,
   submitFinancialDraft,
+  type FinancialResult,
 } from "@/lib/financial-draft";
 import { calendarDate } from "@/lib/view-filters";
 import { WORKSPACE_ID } from "@/lib/workspace-gateway";
 
 export async function recordRate(
   workspaceId: string,
-  _state: { error?: string; receipt?: string } | null,
+  _state: FinancialResult | null,
   form: FormData,
-): Promise<{ error?: string; receipt?: string }> {
+): Promise<FinancialResult> {
   const invalid = { error: "Revisa los datos de la tasa." };
   const input = fields(form, [
     "baseCurrency",
@@ -55,6 +56,7 @@ export async function recordRate(
       failed:
         "No se pudo guardar la tasa. Revisa si ya existe para esa fecha y hora.",
     },
+    form,
   );
   if (result.receipt) revalidatePath("/exchange-rates");
   return result;

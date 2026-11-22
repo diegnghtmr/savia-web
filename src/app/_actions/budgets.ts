@@ -3,12 +3,13 @@
 import { decimalToMinor } from "@/lib/account-money";
 import { budgetScope, methods, rollover, validId } from "@/lib/budgets-gateway";
 import { persistentDraft } from "@/lib/draft-idempotency";
+import { draftWarning } from "@/lib/draft-retry";
 import { fields } from "@/lib/financial-draft";
 import { requireProfile } from "@/lib/require-profile";
 import { calendarDate } from "@/lib/view-filters";
 
 export type BudgetResult =
-  | { error: string }
+  | { error: string; confirmation?: string }
   | { id: string; receipt: string }
   | null;
 export type Binding = {
@@ -42,7 +43,7 @@ export async function saveBudget(
     !Object.hasOwn(methods, draft.method)
   )
     return invalid;
-  if (bound.id) return submit(bound, "PATCH", draft);
+  if (bound.id) return submit(bound, "PATCH", draft, form);
   const period = fields(form, ["periodStart", "periodEnd", "copyFromBudgetId"]);
   if (
     !period ||
@@ -58,14 +59,19 @@ export async function saveBudget(
     (period.copyFromBudgetId && !validId(period.copyFromBudgetId))
   )
     return invalid;
-  return submit(bound, "POST", {
-    ...draft,
-    periodStart: period.periodStart,
-    periodEnd: period.periodEnd,
-    ...(period.copyFromBudgetId && {
-      copyFromBudgetId: period.copyFromBudgetId.toLowerCase(),
-    }),
-  });
+  return submit(
+    bound,
+    "POST",
+    {
+      ...draft,
+      periodStart: period.periodStart,
+      periodEnd: period.periodEnd,
+      ...(period.copyFromBudgetId && {
+        copyFromBudgetId: period.copyFromBudgetId.toLowerCase(),
+      }),
+    },
+    form,
+  );
 }
 
 export async function saveAllocations(
@@ -125,13 +131,14 @@ export async function saveAllocations(
   allocations.sort((left, right) =>
     left.categoryId.localeCompare(right.categoryId),
   );
-  return submit(bound, "PUT", { allocations });
+  return submit(bound, "PUT", { allocations }, form);
 }
 
 async function submit(
   bound: Binding,
   method: "POST" | "PATCH" | "PUT",
   draft: object,
+  form: FormData,
 ): Promise<BudgetResult> {
   const profile = await requireProfile();
   if (profile.kind === "failed")
@@ -149,9 +156,12 @@ async function submit(
     profile.userId,
     `${method} ${route}`,
     { ...draft, etag: bound.etag },
+    { serverTime: scope.serverTime, form },
   );
   if (!pending)
     return { error: "Recarga la página antes de volver a intentarlo." };
+  if (pending.confirmation)
+    return { error: draftWarning, confirmation: pending.confirmation };
   const response = await scope.request(route, {
     method,
     headers: {

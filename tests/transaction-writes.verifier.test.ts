@@ -80,10 +80,13 @@ function draft(fields: Record<string, string> = {}) {
 function membership(url: string) {
   if (url.endsWith("/v1/me")) return Response.json({ id: workspace });
   if (url.endsWith("/v1/workspaces"))
-    return Response.json({
-      items: [{ id: workspace, name: "Casa" }],
-      pageInfo: { hasNextPage: false },
-    });
+    return Response.json(
+      {
+        items: [{ id: workspace, name: "Casa" }],
+        pageInfo: { hasNextPage: false },
+      },
+      { headers: { date: "Fri, 20 Nov 2026 12:00:00 GMT" } },
+    );
   throw Error(`Unexpected request: ${url}`);
 }
 

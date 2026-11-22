@@ -8,7 +8,7 @@
     "check": "prettier --check . && eslint . && tsc --noEmit",
     "test:component": "vitest run tests/page.test.tsx tests/onboarding-form.test.tsx tests/auth-form.test.tsx tests/workspace-selector.test.tsx",
     "test:unit": "vitest run tests/theme.test.tsx tests/onboarding-draft.test.ts",
-    "test:server": "vitest run tests/recovery-session.test.ts tests/server-config.test.ts tests/session.test.ts tests/onboarding.test.ts tests/auth-gateway.test.ts tests/app-entry.test.tsx tests/workspace.test.tsx tests/accounts.test.tsx tests/accounts.verifier.test.ts tests/transactions.test.tsx tests/transactions.verifier.test.tsx tests/transaction-writes.verifier.test.ts tests/transfers.test.ts tests/exchange-rates.test.tsx tests/budgets.test.tsx tests/budget-writes.test.ts",
+    "test:server": "vitest run tests/recovery-session.test.ts tests/server-config.test.ts tests/session.test.ts tests/onboarding.test.ts tests/auth-gateway.test.ts tests/app-entry.test.tsx tests/workspace.test.tsx tests/accounts.test.tsx tests/accounts.verifier.test.ts tests/transactions.test.tsx tests/transactions.verifier.test.tsx tests/transaction-writes.verifier.test.ts tests/transfers.test.ts tests/exchange-rates.test.tsx tests/budgets.test.tsx tests/budget-writes.test.ts tests/w5.verifier.test.tsx tests/draft-policy.test.ts",
     "test:design": "vitest run tests/design-contract.test.ts",
     "test:audit": "vitest run tests/audit-static.test.ts",
     "test:e2e": "playwright test",

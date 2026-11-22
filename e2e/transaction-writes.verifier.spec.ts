@@ -81,7 +81,11 @@ test("a create retried after a lost response and reload is recorded only once", 
   const actionUrl = "**/transactions/new";
   const { promise, resolve, reject } = Promise.withResolvers<string>();
   await page.route(actionUrl, async (route) => {
-    if (route.request().method() !== "POST") return route.continue();
+    if (
+      route.request().method() !== "POST" ||
+      !route.request().postData()?.includes("draftPrepared")
+    )
+      return route.continue();
     try {
       const committed = await route.fetch({ maxRedirects: 0 });
       const redirect = committed.headers()["x-action-redirect"];

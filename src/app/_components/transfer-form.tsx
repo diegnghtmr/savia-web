@@ -1,8 +1,10 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
+import { unavailableDraft, useDraftAction } from "@/lib/draft-client";
 import { recordTransfer } from "../_actions/transfers";
 import { DraftReceipt } from "./draft-receipt";
+import { DraftSubmit } from "./draft-submit";
 
 export function TransferForm({
   bound,
@@ -13,9 +15,11 @@ export function TransferForm({
 }) {
   const [submitted] = useState(bound);
   const [values, setValues] = useState<Record<string, string>>({});
-  const [result, action, pending] = useActionState(
+  const [result, action, pending] = useDraftAction(
+    "transfer",
+    submitted,
     recordTransfer.bind(null, submitted),
-    null,
+    { error: unavailableDraft },
   );
   const value = (key: string) => values[key] ?? "";
   const control = (key: string) => ({
@@ -57,7 +61,7 @@ export function TransferForm({
     ["description", "Descripción (opcional)", "text", false],
   ] as const;
   return (
-    <form action={action}>
+    <form action={action} onReset={(event) => event.preventDefault()}>
       {result?.error && (
         <p role="alert" className="outcome outcome-error">
           {result.error}
@@ -83,7 +87,7 @@ export function TransferForm({
       ))}
       {from && (
         <p>
-          El importe de origen y la comisión se expresan en {from}
+          El importe de origen se expresa en {from}
           {cross && `; el importe recibido, en ${to}`}.
         </p>
       )}
@@ -95,13 +99,23 @@ export function TransferForm({
             type={kind === "date" ? "date" : "text"}
             inputMode={kind === "decimal" ? "decimal" : undefined}
             required={required}
+            disabled={key === "fee"}
+            aria-describedby={key === "fee" ? "transfer-fee-note" : undefined}
             maxLength={key === "description" ? 500 : undefined}
           />
+          {key === "fee" && (
+            <p id="transfer-fee-note" className="hint">
+              La comisión aún no se descuenta del saldo.
+            </p>
+          )}
         </div>
       ))}
-      <button className="submit" type="submit" disabled={pending}>
-        {pending ? "Registrando…" : "Registrar transferencia"}
-      </button>
+      <DraftSubmit
+        workspaceId={submitted.workspaceId}
+        label={pending ? "Registrando…" : "Registrar transferencia"}
+        pending={pending}
+        confirmation={result?.confirmation}
+      />
     </form>
   );
 }

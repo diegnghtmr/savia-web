@@ -221,7 +221,9 @@ it("writes exact normalized drafts with verified scope, version checks and retry
   vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
     if (url.endsWith("/v1/me")) return Response.json({ id });
     if (url.endsWith("/v1/workspaces"))
-      return Response.json(page([{ id, name: "Casa" }]));
+      return Response.json(page([{ id, name: "Casa" }]), {
+        headers: { date: "Fri, 20 Nov 2026 12:00:00 GMT" },
+      });
     const headers = new Headers(init.headers);
     expect(headers.get("x-workspace-id")).toBe(id);
     const path = new URL(url).pathname;

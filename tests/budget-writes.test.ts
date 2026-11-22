@@ -1,5 +1,6 @@
 import { saveAllocations, saveBudget } from "@/app/_actions/budgets";
 import { confirmDraftReceipt } from "@/lib/draft-idempotency";
+import { prepareDraft } from "@/lib/draft-preparation";
 import { requireSession } from "@/lib/session";
 
 const workspaceId = "80000000-0000-4000-8000-000000000001";
@@ -38,10 +39,13 @@ beforeEach(() => {
       path = new URL(req.url).pathname;
     if (path === "/v1/me") return Response.json({ id });
     if (path === "/v1/workspaces")
-      return Response.json({
-        items: [{ id: workspaceId, name: "Casa" }],
-        pageInfo: { hasNextPage: false },
-      });
+      return Response.json(
+        {
+          items: [{ id: workspaceId, name: "Casa" }],
+          pageInfo: { hasNextPage: false },
+        },
+        { headers: { date: "Fri, 20 Nov 2026 12:00:00 GMT" } },
+      );
     writes.push(req);
     const key = req.headers.get("idempotency-key")!;
     const match = req.headers.get("if-match");
@@ -120,9 +124,17 @@ it("stops invalid and repeated inputs before session access and leaves state unc
 });
 
 it("replays an equivalent unacknowledged create and rotates after confirmation", async () => {
+  const input = create();
+  const reservation = await prepareDraft(() =>
+    saveBudget({ workspaceId }, null, input),
+  );
+  if (!reservation.prepared)
+    throw Error("Expected reservation before dispatch");
+  input.set("draftPrepared", reservation.prepared);
+  expect(writes).toHaveLength(0);
   const initial = new Map(jar);
   drop = true;
-  expect(await saveBudget({ workspaceId }, null, create())).toEqual({
+  expect(await saveBudget({ workspaceId }, null, input)).toEqual({
     error: "No pudimos guardar el presupuesto.",
   });
   jar.clear();

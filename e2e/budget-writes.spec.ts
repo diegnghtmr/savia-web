@@ -7,7 +7,11 @@ async function loseResponse(page: Page, button: string) {
   const url = page.url();
   const done = Promise.withResolvers<void>();
   await page.route(url, async (route) => {
-    if (route.request().method() !== "POST") return route.continue();
+    if (
+      route.request().method() !== "POST" ||
+      !route.request().postData()?.includes("draftPrepared")
+    )
+      return route.continue();
     try {
       const reply = await route.fetch({ maxRedirects: 0 });
       expect(reply.ok()).toBe(true);

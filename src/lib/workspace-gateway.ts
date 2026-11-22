@@ -8,6 +8,15 @@ export const WORKSPACE_ID =
 interface WorkspaceSummary {
   id: string;
   name: string;
+  serverTime: number | null;
+}
+
+function membershipTime(value: string | null) {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && new Date(parsed).toUTCString() === value
+    ? parsed
+    : null;
 }
 
 type WorkspaceListResult =
@@ -49,6 +58,7 @@ export async function listWorkspaces(
       const { items: entries, pageInfo } = body as Record<string, unknown>;
       if (!Array.isArray(entries) || !pageInfo || typeof pageInfo !== "object")
         return { kind: "failed" };
+      const serverTime = membershipTime(response.headers.get("date"));
       for (const entry of entries) {
         const id: unknown = entry?.id;
         const name: unknown = entry?.name;
@@ -59,7 +69,7 @@ export async function listWorkspaces(
           !name.trim()
         )
           return { kind: "failed" };
-        items.set(id, { id, name });
+        items.set(id, { id, name, serverTime });
       }
       const { hasNextPage, nextCursor } = pageInfo as Record<string, unknown>;
       if (hasNextPage === false)

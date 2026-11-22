@@ -1,21 +1,15 @@
-import { randomUUID } from "node:crypto";
-import { NextResponse, type NextRequest } from "next/server";
-import { draftCookieOptions, draftSeedCookie } from "@/lib/draft-cookie";
+import { NextResponse } from "next/server";
 
-export function proxy(request: NextRequest) {
+export function proxy() {
+  // Admission and cookie state belong to the verified form action, not its URL.
   const response = NextResponse.next();
-  // Deliver the browser seed on the form GET, before any mutation can commit.
-  if (request.method === "GET" && !request.cookies.has(draftSeedCookie))
-    response.cookies.set(draftSeedCookie, randomUUID(), {
-      ...draftCookieOptions,
-      path: "/",
-    });
+  response.headers.set("Cache-Control", "private, no-store");
   return response;
 }
 
 export const config = {
   matcher: [
-    "/transactions/new",
+    "/transactions/:id",
     "/transfers",
     "/exchange-rates",
     "/budgets/new",

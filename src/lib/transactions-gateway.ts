@@ -198,6 +198,7 @@ export async function ledgerScope(token: string) {
   }
   return {
     name,
+    serverTime: scope.active.serverTime,
     request,
     categories: () => catalog("categories"),
     async listTransactions(filters: URLSearchParams) {

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { persistentDraft } from "./draft-idempotency";
+import { draftWarning } from "./draft-retry";
 import { requireProfile } from "./require-profile";
 import { ledgerScope } from "./transactions-gateway";
 
@@ -27,12 +28,19 @@ export function rateDecimal(value: string) {
   return fraction ? `${whole}.${fraction}` : whole;
 }
 
+export type FinancialResult = {
+  error?: string;
+  receipt?: string;
+  confirmation?: string;
+};
+
 export async function submitFinancialDraft(
   workspaceId: string,
   route: "transfers" | "currency-exchanges" | "exchange-rates",
   draft: object,
   errors: { workspace: string; failed: string },
-): Promise<{ error?: string; receipt?: string }> {
+  form: FormData,
+): Promise<FinancialResult> {
   const profile = await requireProfile();
   if (profile.kind === "failed")
     return { error: "No pudimos consultar tu perfil." };
@@ -43,8 +51,11 @@ export async function submitFinancialDraft(
     profile.userId,
     route,
     draft,
+    { serverTime: scope.serverTime, form },
   );
   if (!key) return { error: "Recarga la página antes de volver a intentarlo." };
+  if (key.confirmation)
+    return { error: draftWarning, confirmation: key.confirmation };
   const id = await scope.createFinancialRecord(route, draft, key.key);
   if (!id) return { error: errors.failed };
   key.receipt(id);

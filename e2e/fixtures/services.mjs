@@ -1,11 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { E2E_USER } from "../fixtures.ts";
-import { ONBOARDED_USER, RECOVERY_USER } from "./accounts.mjs";
+import {
+  DRAFT_CLOCK_USER,
+  ONBOARDED_USER,
+  RECOVERY_USER,
+} from "./accounts.mjs";
 import { handleBudgets } from "./budgets.mjs";
 
 // This server is test-only and accepts only credentials and sessions it issues.
-const accounts = [E2E_USER, ONBOARDED_USER, RECOVERY_USER];
+const accounts = [E2E_USER, ONBOARDED_USER, RECOVERY_USER, DRAFT_CLOCK_USER];
 const sessions = new Map();
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 const encode = (value) =>
@@ -77,9 +81,11 @@ async function handle(request, reply) {
         user,
         onboarded: account !== E2E_USER,
         workspaces:
-          account === ONBOARDED_USER
+          account === ONBOARDED_USER || account === DRAFT_CLOCK_USER
             ? [workspace("Casa"), workspace("Oficina")]
             : [],
+        membershipDate:
+          account === DRAFT_CLOCK_USER ? "Fri, 20 Nov 2026 12:00:00 GMT" : null,
         replays: new Map(),
         accounts: new Map(),
         openings: new Map(),
@@ -121,10 +127,14 @@ async function handle(request, reply) {
       });
     case "GET /v1/workspaces":
       if (!session) return unauthorized();
-      return json(200, {
-        items: session.workspaces,
-        pageInfo: { hasNextPage: false, nextCursor: null },
-      });
+      return json(
+        200,
+        {
+          items: session.workspaces,
+          pageInfo: { hasNextPage: false, nextCursor: null },
+        },
+        session.membershipDate ? { date: session.membershipDate } : undefined,
+      );
     case "POST /v1/workspaces": {
       if (!session) return unauthorized();
       const key = request.headers["idempotency-key"];
@@ -425,6 +435,8 @@ async function handleLedger(session, space, request, url, json) {
         updatedAt: now,
       };
       ledger.transactions.unshift(created);
+      if (session.membershipDate)
+        session.membershipDate = "Sat, 21 Nov 2026 12:00:00 GMT";
     }
     const status = id ? 200 : 201;
     session.replays.set(replayKey, { draft, status, created });

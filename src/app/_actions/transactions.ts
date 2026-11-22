@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { decimalToMinor } from "@/lib/account-money";
-import { draftKey, persistentDraft } from "@/lib/draft-idempotency";
+import { persistentDraft } from "@/lib/draft-idempotency";
+import { draftWarning, type DraftWarning } from "@/lib/draft-retry";
 import { requireProfile } from "@/lib/require-profile";
 import { ledgerScope, types } from "@/lib/transactions-gateway";
 import { calendarDate } from "@/lib/view-filters";
@@ -18,9 +19,8 @@ export type TransactionSubmission = Bound &
         id: string;
         etag: string;
         occurredAt: string;
-        nonce: string;
       }
-    | { mode: "void"; id: string; etag: string; nonce: string }
+    | { mode: "void"; id: string; etag: string }
   );
 const uuid = (value: unknown): value is string =>
   typeof value === "string" && WORKSPACE_ID.test(value);
@@ -91,17 +91,16 @@ function payload(bound: TransactionSubmission, form: FormData) {
 
 export async function saveTransactionAction(
   bound: TransactionSubmission,
-  _previous: string | null,
+  _previous: string | DraftWarning | null,
   form: FormData,
-): Promise<string | null> {
+): Promise<string | DraftWarning | null> {
   const invalid = "Revisa los datos de la transacción.";
   if (
     !bound ||
     !["create", "edit", "void"].includes(bound.mode) ||
     !uuid(bound.workspaceId) ||
     (bound.mode !== "create" &&
-      (!uuid(bound.nonce) ||
-        !uuid(bound.id) ||
+      (!uuid(bound.id) ||
         typeof bound.etag !== "string" ||
         !/^"[1-9]\d{0,9}"$/.test(bound.etag))) ||
     (bound.mode === "edit" && typeof bound.occurredAt !== "string")
@@ -115,28 +114,26 @@ export async function saveTransactionAction(
   if (scope?.workspaceId !== bound.workspaceId)
     return "El espacio activo cambió. Vuelve a Transacciones.";
   const id = bound.mode === "create" ? "" : bound.id.toLowerCase();
-  const saved =
-    bound.mode === "create"
-      ? await persistentDraft(
-          scope.workspaceId,
-          profile.userId,
-          "transactions",
-          draft,
-        )
-      : null;
-  if (bound.mode === "create" && !saved)
-    return "Recarga la página antes de volver a intentarlo.";
-  const key =
-    bound.mode === "create"
-      ? saved!.key
-      : draftKey([bound.nonce, bound.mode, id, draft]);
+  const etag = bound.mode === "create" ? undefined : bound.etag;
+  const method = bound.mode === "edit" ? "PATCH" : "POST";
+  const suffix = id ? `/${id}${bound.mode === "void" ? "/void" : ""}` : "";
+  const saved = await persistentDraft(
+    scope.workspaceId,
+    profile.userId,
+    id ? `${method} transactions${suffix}` : "transactions",
+    etag ? { ...draft, etag } : draft,
+    { serverTime: scope.serverTime, form },
+  );
+  if (!saved) return "Recarga la página antes de volver a intentarlo.";
+  if (saved.confirmation)
+    return { error: draftWarning, confirmation: saved.confirmation };
   const result = await scope.mutate(
-    id ? `/${id}${bound.mode === "void" ? "/void" : ""}` : "",
-    bound.mode === "edit" ? "PATCH" : "POST",
+    suffix,
+    method,
     id ? 200 : 201,
     draft,
-    key,
-    bound.mode === "create" ? undefined : bound.etag,
+    saved.key,
+    etag,
   );
   if (result === "stale")
     return "La transacción cambió. Recarga la página antes de volver a intentarlo.";
@@ -144,7 +141,7 @@ export async function saveTransactionAction(
     return "No se puede realizar el cambio. Revisa el estado de la transacción.";
   if (!result || (id && result.id !== id))
     return "No pudimos guardar la transacción. Vuelve a intentarlo.";
-  saved?.receipt(result.id);
+  saved.receipt(saved.key, result.id);
   revalidatePath("/transactions");
   redirect(`/transactions/${result.id}`);
 }

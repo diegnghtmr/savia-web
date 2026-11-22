@@ -26,7 +26,10 @@ test("records same-currency and cross-currency transfers", async ({ page }) => {
     await page.getByLabel("Cuenta de destino").selectOption({ label: name });
     await page.getByLabel("Importe de origen").fill("50000,00");
     await page.getByLabel("Fecha (UTC)").fill("2026-11-20");
-    await page.getByLabel("Comisión").fill("1000");
+    await expect(page.getByLabel("Comisión")).toBeDisabled({ timeout: 3000 });
+    await expect(
+      page.getByText("La comisión aún no se descuenta del saldo."),
+    ).toBeVisible();
     if (cross) {
       await page.getByLabel("Importe recibido").fill("12.50");
       await page.getByLabel("Tasa ejecutada").fill("0.00025");

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { unavailableDraft, useDraftAction } from "@/lib/draft-client";
 import {
   saveAllocations,
   saveBudget,
@@ -9,6 +10,7 @@ import {
   type BudgetResult,
 } from "../_actions/budgets";
 import { DraftReceipt } from "./draft-receipt";
+import { DraftSubmit } from "./draft-submit";
 
 type Choices = [string, string][];
 type Row = {
@@ -21,13 +23,19 @@ type Row = {
 function BudgetForm({
   action,
   label,
+  bound,
+  kind,
   children,
 }: {
+  bound: Binding;
+  kind: "budget" | "allocations";
   action: (state: BudgetResult, data: FormData) => Promise<BudgetResult>;
   label: string;
   children: ReactNode;
 }) {
-  const [state, submit, pending] = useActionState(action, null);
+  const [state, submit, pending] = useDraftAction(kind, bound, action, {
+    error: unavailableDraft,
+  });
   if (state && "receipt" in state)
     return (
       <>
@@ -51,9 +59,12 @@ function BudgetForm({
       )}
       <fieldset disabled={pending}>
         {children}
-        <button className="submit" type="submit">
-          {pending ? "Guardando…" : label}
-        </button>
+        <DraftSubmit
+          workspaceId={bound.workspaceId}
+          label={pending ? "Guardando…" : label}
+          pending={pending}
+          confirmation={state?.confirmation}
+        />
       </fieldset>
     </form>
   );
@@ -76,6 +87,8 @@ export function BudgetMetadata({
 }) {
   return (
     <BudgetForm
+      bound={bound}
+      kind="budget"
       action={saveBudget.bind(null, bound)}
       label={period ? "Crear presupuesto" : "Guardar presupuesto"}
     >
@@ -152,6 +165,8 @@ export function BudgetAllocations({
     setRows(rows.map((row) => (row.key === key ? { ...row, ...patch } : row)));
   return (
     <BudgetForm
+      bound={bound}
+      kind="allocations"
       action={saveAllocations.bind(null, bound)}
       label="Guardar asignaciones"
     >

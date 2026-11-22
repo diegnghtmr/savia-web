@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { withDraftLock } from "@/lib/draft-client";
 import { acknowledgeDraft } from "../_actions/draft-receipt";
 
 export function DraftReceipt({ id }: { id: string }) {
   const [pending, setPending] = useState(true);
   useEffect(() => {
-    void acknowledgeDraft(id)
+    void withDraftLock(() => acknowledgeDraft(id))
       .then(() => setPending(false))
       .catch(() => setPending(false));
   }, [id]);

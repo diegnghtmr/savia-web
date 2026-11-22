@@ -1,10 +1,12 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
+import { unavailableDraft, useDraftAction } from "@/lib/draft-client";
 import {
   saveTransactionAction,
   type TransactionSubmission,
 } from "../_actions/transactions";
+import { DraftSubmit } from "./draft-submit";
 
 type Options = [string, string][];
 type Labels = Record<
@@ -37,10 +39,15 @@ export function TransactionForm({
     description: row?.description ?? "",
   });
   const [tags, setTags] = useState(row?.tagIds ?? []);
-  const [error, submit, pending] = useActionState(
+  const [state, submit, pending] = useDraftAction(
+    "transaction",
+    bound,
     saveTransactionAction.bind(null, bound),
-    null,
+    unavailableDraft,
   );
+  const error = typeof state === "string" ? state : state?.error;
+  const confirmation =
+    typeof state === "object" ? state?.confirmation : undefined;
   const mode = bound.mode;
   const title =
     mode === "create"
@@ -84,7 +91,11 @@ export function TransactionForm({
     );
   }
   return (
-    <form action={submit} aria-label={title}>
+    <form
+      action={submit}
+      aria-label={title}
+      onReset={(event) => event.preventDefault()}
+    >
       {error && (
         <p className="outcome outcome-error" role="alert">
           {error}
@@ -107,6 +118,13 @@ export function TransactionForm({
               name="confirm"
               type="checkbox"
               value="yes"
+              checked={values.confirm === "yes"}
+              onChange={(event) =>
+                setValues({
+                  ...values,
+                  confirm: event.target.checked ? "yes" : "",
+                })
+              }
               required
             />
             <label htmlFor="confirm-void">Confirmo la anulación</label>
@@ -177,9 +195,12 @@ export function TransactionForm({
           </>
         )
       )}
-      <button className="submit" type="submit" disabled={pending}>
-        {pending ? "Guardando…" : title}
-      </button>
+      <DraftSubmit
+        workspaceId={bound.workspaceId}
+        label={pending ? "Guardando…" : title}
+        pending={pending}
+        confirmation={confirmation}
+      />
     </form>
   );
 }

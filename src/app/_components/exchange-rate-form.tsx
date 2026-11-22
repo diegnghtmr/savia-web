@@ -1,8 +1,10 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
+import { unavailableDraft, useDraftAction } from "@/lib/draft-client";
 import { recordRate } from "../_actions/exchange-rates";
 import { DraftReceipt } from "./draft-receipt";
+import { DraftSubmit } from "./draft-submit";
 
 const inputs = [
   ["baseCurrency", "Moneda base", "text", 3],
@@ -15,9 +17,11 @@ const inputs = [
 export function ExchangeRateForm({ workspaceId }: { workspaceId: string }) {
   const [bound] = useState(workspaceId);
   const [values, setValues] = useState<Record<string, string>>({});
-  const [state, submit, pending] = useActionState(
+  const [state, submit, pending] = useDraftAction(
+    "rate",
+    bound,
     recordRate.bind(null, bound),
-    null,
+    { error: unavailableDraft },
   );
   if (state?.receipt)
     return (
@@ -32,7 +36,11 @@ export function ExchangeRateForm({ workspaceId }: { workspaceId: string }) {
       </>
     );
   return (
-    <form action={submit} aria-label="Nueva tasa manual">
+    <form
+      action={submit}
+      aria-label="Nueva tasa manual"
+      onReset={(event) => event.preventDefault()}
+    >
       {state?.error && (
         <p className="outcome outcome-error" role="alert">
           {state.error}
@@ -55,9 +63,12 @@ export function ExchangeRateForm({ workspaceId }: { workspaceId: string }) {
           />
         </div>
       ))}
-      <button type="submit" className="submit" disabled={pending}>
-        {pending ? "Guardando…" : "Guardar tasa manual"}
-      </button>
+      <DraftSubmit
+        workspaceId={bound}
+        label={pending ? "Guardando…" : "Guardar tasa manual"}
+        pending={pending}
+        confirmation={state?.confirmation}
+      />
     </form>
   );
 }

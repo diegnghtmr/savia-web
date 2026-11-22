@@ -29,10 +29,13 @@ function stub() {
     const path = new URL(String(url)).pathname;
     if (path === "/v1/me") return Response.json({ id });
     if (path === "/v1/workspaces")
-      return Response.json({
-        items: [{ id, name: "Casa" }],
-        pageInfo: { hasNextPage: false },
-      });
+      return Response.json(
+        {
+          items: [{ id, name: "Casa" }],
+          pageInfo: { hasNextPage: false },
+        },
+        { headers: { date: "Fri, 20 Nov 2026 12:00:00 GMT" } },
+      );
     return init?.method === "POST"
       ? Response.json({ id }, { status: 201 })
       : Response.json([

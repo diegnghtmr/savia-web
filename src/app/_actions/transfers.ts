@@ -5,15 +5,16 @@ import {
   fields,
   rateDecimal,
   submitFinancialDraft,
+  type FinancialResult,
 } from "@/lib/financial-draft";
 import { calendarDate } from "@/lib/view-filters";
 import { WORKSPACE_ID } from "@/lib/workspace-gateway";
 
 export async function recordTransfer(
   bound: { workspaceId: string; currencies: Record<string, string> },
-  _state: { error?: string; receipt?: string } | null,
+  _state: FinancialResult | null,
   form: FormData,
-): Promise<{ error?: string; receipt?: string }> {
+): Promise<FinancialResult> {
   const invalid = { error: "Revisa los datos de la transferencia." };
   const input = fields(form, [
     "sourceAccountId",
@@ -47,14 +48,12 @@ export async function recordTransfer(
   )
     return invalid;
   const amount = positiveMoney(input.amount, from);
-  const fee = input.fee ? positiveMoney(input.fee, from) : undefined;
-  if (!amount || fee === null) return invalid;
+  if (!amount || (input.fee && !positiveMoney(input.fee, from))) return invalid;
   const base = {
     sourceAccountId,
     destinationAccountId,
     occurredAt: `${input.date}T00:00:00Z`,
     description: input.description || null,
-    ...(fee && { fee }),
   };
   const errors = {
     workspace: "El espacio activo cambió. Vuelve a Transferencias.",
@@ -68,6 +67,7 @@ export async function recordTransfer(
       "transfers",
       { ...base, amount },
       errors,
+      form,
     );
   }
   const destinationAmount = positiveMoney(input.destinationAmount, to);
@@ -88,6 +88,7 @@ export async function recordTransfer(
       ...(referenceRate && { referenceRate }),
     },
     errors,
+    form,
   );
 }
 

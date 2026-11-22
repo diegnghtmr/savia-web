@@ -66,15 +66,18 @@ it("rejects ambiguous drafts, same-account moves and invalid FX before I/O", asy
   expect(fetchImpl).not.toHaveBeenCalled();
 });
 
-it("posts exact amounts and fee to the matching endpoint and replays the normalized draft", async () => {
+it("posts exact amounts without fees and replays the normalized draft", async () => {
   const writes: { url: string; key: string | null; body: unknown }[] = [];
   fetchImpl.mockImplementation(async (url, init) => {
     if (String(url).endsWith("/me")) return Response.json({ id: src });
     if (String(url).endsWith("/workspaces"))
-      return Response.json({
-        items: [{ id: src, name: "Casa" }],
-        pageInfo: { hasNextPage: false },
-      });
+      return Response.json(
+        {
+          items: [{ id: src, name: "Casa" }],
+          pageInfo: { hasNextPage: false },
+        },
+        { headers: { date: "Fri, 20 Nov 2026 12:00:00 GMT" } },
+      );
     const headers = new Headers(init?.headers);
     expect(headers.get("x-workspace-id")).toBe(src);
     writes.push({
@@ -105,7 +108,8 @@ it("posts exact amounts and fee to the matching endpoint and replays the normali
       draft({ ...exchange, executedRate: "0,02", destinationAmount: "17,005" }),
     ),
   ).toEqual({ receipt: cop });
-  const fee = { amountMinor: "2", currency: "COP" };
+  expect(writes[0].body).not.toHaveProperty("fee");
+  expect(writes[1].body).not.toHaveProperty("fee");
   const sourceAmount = { amountMinor: "900719925474099301", currency: "COP" };
   expect(writes[0]).toMatchObject({
     url: "https://backend.test/v1/transfers",
@@ -113,7 +117,6 @@ it("posts exact amounts and fee to the matching endpoint and replays the normali
       sourceAccountId: src,
       destinationAccountId: cop,
       amount: sourceAmount,
-      fee,
       occurredAt: "2026-11-20T00:00:00Z",
     },
   });
@@ -125,7 +128,6 @@ it("posts exact amounts and fee to the matching endpoint and replays the normali
       sourceAmount,
       destinationAmount: { amountMinor: "17005", currency: "KWD" },
       executedRate: "0.02",
-      fee,
     },
   });
   expect(writes[2]).toEqual(writes[1]);
