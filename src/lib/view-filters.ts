@@ -12,10 +12,16 @@ export function viewFilters(
   for (const [field, valid] of Object.entries({
     ...fields,
     cursor: cursorToken,
+    limit: (value: string) =>
+      /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 200,
   })) {
     const value = input[field];
-    // Empty controls mean no filter. A cursor is an opaque backend token, not a control.
-    if (value === undefined || (value === "" && field !== "cursor")) continue;
+    // Empty form controls mean no filter; explicit pagination parameters must be valid.
+    if (
+      value === undefined ||
+      (value === "" && field !== "cursor" && field !== "limit")
+    )
+      continue;
     if (typeof value !== "string" || !valid(value)) return null;
     filters.set(field, value);
   }

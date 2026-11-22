@@ -69,8 +69,9 @@ export function listAccounts(
   target: Target,
   status?: AccountStatus,
   cursor?: string,
+  limit = "20",
 ) {
-  const query = new URLSearchParams({ limit: "20" });
+  const query = new URLSearchParams({ limit });
   if (status) query.set("status", status);
   if (cursor) query.set("cursor", cursor);
   return request(target, `?${query}`, (body) => {
@@ -106,7 +107,13 @@ export const ACCOUNT_ETAG = /^"[1-9]\d{0,9}"$/;
 export function getAccount(target: Target, id: string) {
   return request(target, `/${id}`, (body, response) => {
     const etag = response.headers.get("etag");
-    if (!record(body) || body.id !== id || !etag || !ACCOUNT_ETAG.test(etag))
+    if (
+      !record(body) ||
+      typeof body.id !== "string" ||
+      body.id.toLowerCase() !== id ||
+      !etag ||
+      !ACCOUNT_ETAG.test(etag)
+    )
       return null;
     const { name, type, currency, status, includeInNetWorth } = body;
     if (
@@ -163,10 +170,12 @@ function parseEquivalent(body: unknown) {
 }
 
 export function getAccountBalance(target: Target, id: string) {
-  return request(target, `/${id}/balance`, (body) => {
+  const canonical = id.toLowerCase();
+  return request(target, `/${canonical}/balance`, (body) => {
     if (
       !record(body) ||
-      body.accountId !== id ||
+      typeof body.accountId !== "string" ||
+      body.accountId.toLowerCase() !== canonical ||
       typeof body.asOf !== "string" ||
       !Number.isFinite(Date.parse(body.asOf))
     )

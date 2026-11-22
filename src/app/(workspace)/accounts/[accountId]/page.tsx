@@ -26,7 +26,7 @@ export default async function AccountPage({
   const profile = await requireProfile();
   if (profile.kind === "failed")
     return <p role="alert">No pudimos consultar tu perfil.</p>;
-  const { accountId } = await params;
+  const accountId = (await params).accountId.toLowerCase();
   if (!WORKSPACE_ID.test(accountId)) notFound();
   const scope = await accountScope(profile.accessToken);
   if (scope.kind === "unauthenticated") redirect("/sign-in");

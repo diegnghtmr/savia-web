@@ -43,6 +43,7 @@ export default async function AccountsPage({
     scope.target,
     status ?? undefined,
     filters.get("cursor") ?? undefined,
+    filters.get("limit") ?? undefined,
   );
   if (result.kind === "unauthenticated") redirect("/sign-in");
   if (result.kind === "failed" && result.status === 400)
@@ -57,7 +58,7 @@ export default async function AccountsPage({
   );
   if (balances.some(({ kind }) => kind === "unauthenticated"))
     redirect("/sign-in");
-  const next = new URLSearchParams(status ? { status } : {});
+  const next = new URLSearchParams(filters);
   if (nextCursor) next.set("cursor", nextCursor);
 
   return (

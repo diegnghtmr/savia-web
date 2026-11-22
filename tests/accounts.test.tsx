@@ -61,7 +61,11 @@ it("queries filtered accounts and balances in the verified workspace", async () 
         asOf: "2026-01-01T00:00:00Z",
       }),
     );
-  const searchParams = Promise.resolve({ status: "active", cursor: "next/1" });
+  const searchParams = Promise.resolve({
+    status: "active",
+    cursor: "next/1",
+    limit: "3",
+  });
   render(await AccountsPage({ searchParams }));
   expect(screen.getByRole("link", { name: "Mi cuenta" })).toHaveAttribute(
     "href",
@@ -70,11 +74,11 @@ it("queries filtered accounts and balances in the verified workspace", async () 
   expect(screen.getByText(/−COP\s9\.007\.199\.254\.740\.993,01/)).toBeVisible();
   expect(screen.getByRole("link", { name: "Siguiente" })).toHaveAttribute(
     "href",
-    "/accounts?status=active&cursor=next%2F2",
+    "/accounts?status=active&cursor=next%2F2&limit=3",
   );
   const calls = fetchImpl.mock.calls.slice(2);
   expect(calls.map(([url]) => url)).toEqual([
-    "https://backend.test/savia/v1/accounts?limit=20&status=active&cursor=next%2F1",
+    "https://backend.test/savia/v1/accounts?limit=3&status=active&cursor=next%2F1",
     `https://backend.test/savia/v1/accounts/${id}/balance`,
   ]);
   for (const [, init] of calls)
@@ -109,6 +113,11 @@ it.each([
   { status: "unknown" },
   { cursor: ["one", "two"] },
   { cursor: "" },
+  { limit: "0" },
+  { limit: "201" },
+  { limit: "1.5" },
+  { limit: "" },
+  { limit: ["1", "2"] },
 ])(
   "rejects invalid list parameters before querying accounts: %o",
   async (query) => {
@@ -225,6 +234,41 @@ it("does not load account detail when the profile check fails", async () => {
   );
   expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([
     "https://backend.test/savia/v1/me",
+  ]);
+});
+
+it("loads account and balance using a canonical account UUID", async () => {
+  const accountId = "abcdefab-abcd-4abc-8abc-abcdefabcdef";
+  profileAndSpace();
+  fetchImpl
+    .mockResolvedValueOnce(
+      Response.json(
+        {
+          ...account,
+          id: accountId,
+          type: "cash",
+          currency: "COP",
+          includeInNetWorth: true,
+        },
+        { headers: { etag: '"7"' } },
+      ),
+    )
+    .mockResolvedValueOnce(
+      Response.json({
+        accountId,
+        asOf: "2026-01-01T00:00:00Z",
+        nativeBalance: { amountMinor: "0", currency: "COP" },
+      }),
+    );
+  render(
+    await AccountPage({
+      params: Promise.resolve({ accountId: accountId.toUpperCase() }),
+    }),
+  );
+  expect(screen.getByRole("heading", { name: "Mi cuenta" })).toBeVisible();
+  expect(fetchImpl.mock.calls.slice(2).map(([url]) => url)).toEqual([
+    `https://backend.test/savia/v1/accounts/${accountId}`,
+    `https://backend.test/savia/v1/accounts/${accountId}/balance`,
   ]);
 });
 
