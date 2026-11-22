@@ -46,7 +46,7 @@ export function ledgerFilters(input: SearchParams) {
   return from && to && from > to ? null : filters;
 }
 
-function amount(value: unknown) {
+export function amount(value: unknown) {
   if (!object(value)) return null;
   const { amountMinor, currency } = value;
   return typeof amountMinor === "string" &&
@@ -106,7 +106,10 @@ function transaction(value: unknown) {
   };
 }
 
-function parsePage<T>(body: unknown, parse: (item: unknown) => T | null) {
+export function parsePage<T>(
+  body: unknown,
+  parse: (item: unknown) => T | null,
+) {
   if (!object(body) || !Array.isArray(body.items) || !object(body.pageInfo))
     return null;
   const { hasNextPage, nextCursor } = body.pageInfo;
@@ -195,6 +198,8 @@ export async function ledgerScope(token: string) {
   }
   return {
     name,
+    request,
+    categories: () => catalog("categories"),
     async listTransactions(filters: URLSearchParams) {
       const query = new URLSearchParams({ limit: "20" });
       for (const [key, value] of filters) query.set(key, value);

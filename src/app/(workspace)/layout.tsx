@@ -19,6 +19,9 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
           <Link href="/transfers" prefetch={false}>
             Transferencias
           </Link>
+          <Link href="/budgets" prefetch={false}>
+            Presupuestos
+          </Link>
           <form action={signOutAction}>
             <button className="submit" type="submit">
               Cerrar sesión

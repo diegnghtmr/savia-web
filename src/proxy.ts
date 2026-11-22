@@ -14,5 +14,11 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/transactions/new", "/transfers", "/exchange-rates"],
+  matcher: [
+    "/transactions/new",
+    "/transfers",
+    "/exchange-rates",
+    "/budgets/new",
+    "/budgets/:id/edit/:version",
+  ],
 };

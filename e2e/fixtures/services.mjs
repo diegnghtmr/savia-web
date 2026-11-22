@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { E2E_USER } from "../fixtures.ts";
 import { ONBOARDED_USER, RECOVERY_USER } from "./accounts.mjs";
+import { handleBudgets } from "./budgets.mjs";
 
 // This server is test-only and accepts only credentials and sessions it issues.
 const accounts = [E2E_USER, ONBOARDED_USER, RECOVERY_USER];
@@ -84,6 +85,7 @@ async function handle(request, reply) {
         openings: new Map(),
         ledger: new Map(),
         rates: new Map(),
+        budgets: new Map(),
       });
       return json(200, {
         user,
@@ -186,6 +188,23 @@ async function handle(request, reply) {
         );
         return space
           ? handleRates(request, session, space, url, json)
+          : json(403, {});
+      }
+      if (/^\/v1\/budgets(?:\/|$)/.test(url.pathname)) {
+        if (!session) return unauthorized();
+        const space = session.workspaces.find(
+          ({ id }) => id === request.headers["x-workspace-id"],
+        );
+        return space
+          ? handleBudgets({
+              request,
+              url,
+              json,
+              session,
+              space,
+              readJson,
+              categoryId: ledgerFor(session, space).categories[0].id,
+            })
           : json(403, {});
       }
       return json(404, { message: "Unsupported fixture route" });
@@ -306,8 +325,7 @@ async function handleAccounts(request, url, session, json) {
   });
 }
 
-async function handleLedger(session, space, request, url, json) {
-  const now = new Date().toISOString();
+function ledgerFor(session, space, now = new Date().toISOString()) {
   const accounts = accountsFor(session, space, now);
   const [account] = accounts;
   const named = (name) => ({ id: randomUUID(), name });
@@ -345,7 +363,12 @@ async function handleLedger(session, space, request, url, json) {
       transactions,
     });
   }
-  const ledger = session.ledger.get(space.id);
+  return session.ledger.get(space.id);
+}
+
+async function handleLedger(session, space, request, url, json) {
+  const now = new Date().toISOString();
+  const ledger = ledgerFor(session, space, now);
   const [, , resource, id, operation] = url.pathname.split("/");
   const index = ledger.transactions.findIndex((entry) => entry.id === id);
   const row = ledger.transactions[index];
@@ -383,7 +406,7 @@ async function handleLedger(session, space, request, url, json) {
       };
       ledger.transactions[index] = created;
     } else {
-      const source = accounts.find(
+      const source = accountsFor(session, space, now).find(
         (candidate) => candidate.id === body.accountId,
       );
       if (

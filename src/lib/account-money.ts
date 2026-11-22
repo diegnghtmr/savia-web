@@ -42,3 +42,17 @@ export function money({
   // Intl formats the decimal string without first losing precision to Number.
   return format.format(signed).replace(/^-/, "−");
 }
+
+export function decimalForInput({
+  amountMinor,
+  currency,
+}: Parameters<typeof money>[0]) {
+  const scale =
+    currencyFormat(currency).resolvedOptions().maximumFractionDigits ?? 0;
+  if (!scale) return amountMinor;
+  const minor = BigInt(amountMinor);
+  const unit = BigInt(10) ** BigInt(scale);
+  const negative = minor < BigInt(0);
+  const absolute = negative ? -minor : minor;
+  return `${negative ? "-" : ""}${absolute / unit}.${String(absolute % unit).padStart(scale, "0")}`;
+}
