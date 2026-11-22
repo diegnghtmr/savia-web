@@ -62,8 +62,8 @@ export function DebtPaymentForm({
           <input name="totalAmount" required inputMode="decimal" />
         </label>
         <p className="hint" id="debt-split-hint">
-          Sin desglose, todo el pago se aplica a capital. Si indicas un
-          desglose, debe sumar el total.
+          Si dejas el capital en blanco, se aplica el total menos los intereses
+          y la comisión. Si lo indicas, el desglose debe sumar el total.
         </p>
         {splits.map(([name, label]) => (
           <label key={name} className="field">

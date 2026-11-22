@@ -56,7 +56,9 @@ beforeEach(() => {
     expect(headers.get("x-workspace-id")).toBe(workspaceId);
     expect(key).toMatch(/^[\da-f-]{36}$/);
     writes.push(key);
-    payments.set(key, JSON.parse(String(init.body)));
+    const body: unknown = JSON.parse(String(init.body));
+    if (payments.has(key)) expect(payments.get(key)).toEqual(body);
+    else payments.set(key, body);
     return Response.json({ id }, { status: 201 });
   });
 });
@@ -103,6 +105,12 @@ it("rejects ambiguous amounts, invalid splits, dates and incompatible accounts b
     { accountId: other },
     { interestAmount: "-1" },
     { feeAmount: "0,02" },
+    {
+      totalAmount: "1",
+      principalAmount: "",
+      interestAmount: "1,01",
+      feeAmount: "",
+    },
   ];
   for (const data of [duplicate, file, ...invalid.map(form)])
     expect(await payDebt(binding, null, data)).toEqual({
@@ -125,15 +133,7 @@ it("does not cross workspaces and retries an exact payment against the backend c
   expect(jar).toEqual(initial);
   expect(writes).toHaveLength(0);
   active = workspaceId;
-  async function loseReply() {
-    const { prepared } = await preflight(input);
-    expect(prepared).toEqual(expect.any(String));
-    input.set("draftPrepared", prepared!);
-    const reserved = new Map(jar);
-    expect(await payDebt(binding, null, input)).toEqual({ receipt: id });
-    jar = reserved;
-  }
-  await loseReply();
+  await losePaymentReply(input);
   const exact = (amountMinor: string) => ({ currency: "COP", amountMinor });
   expect(payments.get(writes[0])).toEqual({
     accountId: account,
@@ -144,7 +144,7 @@ it("does not cross workspaces and retries an exact payment against the backend c
     occurredAt: "2026-01-12T00:00:00Z",
   });
   backend += 22 * hour;
-  await loseReply();
+  await losePaymentReply(input);
   expect(writes).toEqual([writes[0], writes[0]]);
   expect(payments.size).toBe(1);
   backend += hour;
@@ -157,6 +157,82 @@ it("does not cross workspaces and retries an exact payment against the backend c
   });
   expect(writes).toHaveLength(2);
   expect(payments.size).toBe(1);
+});
+
+it.each([
+  {
+    title: "blank split and explicit full principal",
+    first: ["", "", ""],
+    retry: ["3,00", "0", "0"],
+    expected: {},
+  },
+  {
+    title: "omitted fee and explicit zero fee",
+    first: ["2,00", "1,00", ""],
+    retry: ["2,00", "1,00", "0"],
+    expected: { principalAmount: "200", interestAmount: "100" },
+  },
+  {
+    title: "inferred principal and explicit remainder",
+    first: ["", "0,90", "0,10"],
+    retry: ["2,00", "0,90", "0,10"],
+    expected: {
+      principalAmount: "200",
+      interestAmount: "90",
+      feeAmount: "10",
+    },
+  },
+])("replays $title", async ({ first, retry, expected }) => {
+  expect(await admitDraftSeed(workspaceId)).toBe(true);
+  const make = ([principalAmount, interestAmount, feeAmount]: string[]) =>
+    form({ totalAmount: "3", principalAmount, interestAmount, feeAmount });
+  await losePaymentReply(make(first));
+  await losePaymentReply(make(retry));
+  expect(writes).toEqual([writes[0], writes[0]]);
+  expect(payments.size).toBe(1);
+  expect(payments.get(writes[0])).toEqual({
+    accountId: account,
+    totalAmount: { currency: "COP", amountMinor: "300" },
+    occurredAt: "2026-01-12T00:00:00Z",
+    ...Object.fromEntries(
+      Object.entries(expected).map(([part, amountMinor]) => [
+        part,
+        { currency: "COP", amountMinor },
+      ]),
+    ),
+  });
+});
+
+async function losePaymentReply(input: FormData) {
+  const { prepared } = await preflight(input);
+  expect(prepared).toEqual(expect.any(String));
+  input.set("draftPrepared", prepared!);
+  const reserved = new Map(jar);
+  expect(await payDebt(binding, null, input)).toEqual({ receipt: id });
+  jar = reserved;
+}
+
+it("keeps genuinely different splits separate even when the total is unchanged", async () => {
+  expect(await admitDraftSeed(workspaceId)).toBe(true);
+  await losePaymentReply(
+    form({
+      totalAmount: "3",
+      principalAmount: "2",
+      interestAmount: "1",
+      feeAmount: "",
+    }),
+  );
+  await losePaymentReply(
+    form({
+      totalAmount: "3",
+      principalAmount: "2",
+      interestAmount: "",
+      feeAmount: "1",
+    }),
+  );
+  expect(writes).toHaveLength(2);
+  expect(writes[1]).not.toBe(writes[0]);
+  expect(payments.size).toBe(2);
 });
 
 it("omits all split fields when the total should go entirely to principal", async () => {
