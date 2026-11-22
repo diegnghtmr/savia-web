@@ -16,8 +16,10 @@ export default async function FundPage({
     return <p role="alert">No pudimos consultar tu perfil.</p>;
   const scope = await fundScope(profile.accessToken);
   if (!scope) return <Link href="/overview">Revisa el espacio activo</Link>;
-  const fund = await scope.detail(fundId.toLowerCase());
+  const fund = await scope.detail(fundId.toLowerCase(), true);
   if (fund === "not-found") notFound();
+  if (fund === "service-error")
+    return <p role="alert">No pudimos cargar el fondo.</p>;
   if (!fund) return <p role="alert">No pudimos encontrar el fondo</p>;
   return (
     <>

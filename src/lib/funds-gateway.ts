@@ -110,6 +110,9 @@ export async function fundScope(token: string) {
   return {
     ...scope,
     list,
-    detail: (id: string) => scanWorkspacePages(id, list),
+    detail: (id: string, distinguishUpstreamFailure = false) =>
+      scanWorkspacePages(id, list, () =>
+        distinguishUpstreamFailure ? ("service-error" as const) : null,
+      ),
   };
 }

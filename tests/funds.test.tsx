@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import List from "@/app/(workspace)/funds/page";
+import Contribute from "@/app/(workspace)/funds/[fundId]/contribute/page";
 import Detail from "@/app/(workspace)/funds/[fundId]/page";
 import { requireSession } from "@/lib/session";
 
@@ -144,3 +145,23 @@ it("aborts a stalled page at the overall deadline and renders the bounded search
     vi.useRealTimers();
   }
 });
+
+// Reviewer regression (verify mwrd7bv0). Append to tests/funds.test.tsx; import Contribute from "@/app/(workspace)/funds/[fundId]/contribute/page".
+it.each([
+  ["detail", Detail],
+  ["contribution", Contribute],
+] as const)(
+  "preserves the existing %s error on a service failure",
+  async (_label, Page) => {
+    const fixtures = fetchImpl.getMockImplementation()!;
+    fetchImpl.mockImplementation((url, init) =>
+      new URL(String(url)).pathname === "/v1/funds"
+        ? Promise.resolve(new Response(null, { status: 503 }))
+        : fixtures(url, init),
+    );
+    render(await Page({ params: Promise.resolve({ fundId: id }) }));
+    expect(screen.getByRole("alert").textContent).toBe(
+      "No pudimos cargar el fondo.",
+    );
+  },
+);
