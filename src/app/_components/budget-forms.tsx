@@ -60,7 +60,6 @@ function BudgetForm({
       <fieldset disabled={pending}>
         {children}
         <DraftSubmit
-          workspaceId={bound.workspaceId}
           label={pending ? "Guardando…" : label}
           pending={pending}
           confirmation={state?.confirmation}

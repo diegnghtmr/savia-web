@@ -1,3 +1,4 @@
+import { POST as reserve } from "@/app/draft-preflight/route";
 import { saveTransactionAction } from "@/app/_actions/transactions";
 import { recordTransfer } from "@/app/_actions/transfers";
 import { saveBudget } from "@/app/_actions/budgets";
@@ -139,6 +140,40 @@ const sendTransfer = (input: FormData) =>
     null,
     input,
   );
+
+it("admits a missing draft seed only after validated input and verified workspace", async () => {
+  jar.clear();
+  const prepare = (input: FormData, active = workspaceId) => {
+    input.set(
+      "draftContext",
+      JSON.stringify({
+        kind: "transfer",
+        bound: {
+          workspaceId: active,
+          currencies: { [source]: "COP", [destination]: "COP" },
+        },
+      }),
+    );
+    return reserve(input);
+  };
+  fetchImpl.mockClear();
+  expect(await prepare(form({}))).toHaveProperty("state.error");
+  expect(fetchImpl).not.toHaveBeenCalled();
+  expect(await prepare(transfer(), id)).toHaveProperty("state.error");
+  expect(jar.size).toBe(0);
+  const denied = vi.spyOn(jar, "set").mockImplementationOnce(() => {
+    throw new Error("Cookie write unavailable");
+  });
+  expect(await prepare(transfer())).toEqual({
+    state: { error: "Recarga la página antes de volver a intentarlo." },
+  });
+  expect(denied).toHaveBeenCalledOnce();
+  expect(jar.size).toBe(0);
+  denied.mockRestore();
+  expect(await prepare(transfer())).toEqual({ prepared: expect.any(String) });
+  expect(jar.get("savia-draft-seed")).toMatch(/\.ready$/);
+  expect(writes).toHaveLength(0);
+});
 
 it("replays against the backend clock even when the web clock has advanced three hours further", async () => {
   const clock = vi.spyOn(Date, "now").mockReturnValue(initialTime);

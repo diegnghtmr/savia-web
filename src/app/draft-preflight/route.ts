@@ -12,9 +12,9 @@ import {
   type TransactionSubmission,
 } from "@/app/_actions/transactions";
 import { recordTransfer } from "@/app/_actions/transfers";
-import { prepareDraft } from "@/lib/draft-preparation";
+import { prepareDraftWithAdmission } from "@/lib/draft-preparation";
 
-type Reservation = Awaited<ReturnType<typeof prepareDraft>>;
+type Reservation = Awaited<ReturnType<typeof prepareDraftWithAdmission>>;
 
 export function POST(request: Request): Promise<Response>;
 export function POST(form: FormData): Promise<Reservation>;
@@ -40,7 +40,7 @@ function reserve(form: FormData) {
     bound: unknown;
   };
   form.delete("draftContext");
-  return prepareDraft(async () => {
+  return prepareDraftWithAdmission(async () => {
     switch (meta.kind) {
       case "transaction":
         return saveTransactionAction(

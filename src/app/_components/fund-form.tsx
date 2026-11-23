@@ -100,7 +100,6 @@ export function FundForm({
           </label>
         )}
         <DraftSubmit
-          workspaceId={bound.workspaceId}
           label={pending ? "Guardando…" : label}
           pending={pending}
           confirmation={state?.confirmation}

@@ -58,7 +58,6 @@ export function DataForm({
         {(error || state?.error) && <p role="alert">{error || state?.error}</p>}
         {state?.href && <a href={state.href}>Revisar estado actual</a>}
         <DraftSubmit
-          workspaceId={bound.workspaceId}
           label={pending ? "Enviando…" : label}
           pending={pending}
           confirmation={error ? undefined : state?.confirmation}

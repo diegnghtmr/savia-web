@@ -64,7 +64,6 @@ export function ExchangeRateForm({ workspaceId }: { workspaceId: string }) {
         </div>
       ))}
       <DraftSubmit
-        workspaceId={bound}
         label={pending ? "Guardando…" : "Guardar tasa manual"}
         pending={pending}
         confirmation={state?.confirmation}

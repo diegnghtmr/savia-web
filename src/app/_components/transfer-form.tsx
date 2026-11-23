@@ -111,7 +111,6 @@ export function TransferForm({
         </div>
       ))}
       <DraftSubmit
-        workspaceId={submitted.workspaceId}
         label={pending ? "Registrando…" : "Registrar transferencia"}
         pending={pending}
         confirmation={result?.confirmation}

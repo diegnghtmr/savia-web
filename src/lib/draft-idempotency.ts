@@ -4,7 +4,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
 import { draftCookieOptions, draftSeedCookie } from "./draft-cookie";
 import { admitOneShotDraft, consumeOneShotDraft } from "./draft-one-shot";
-import { draftReserved, isDraftPreparation } from "./draft-preparation";
+import {
+  draftReserved,
+  isDraftPreparation,
+  shouldAdmitDraft,
+} from "./draft-preparation";
 import { draftConfirmation } from "./draft-retry";
 import { requireProfile } from "./require-profile";
 import { readWorkspaceContext } from "./workspace-context";
@@ -73,9 +77,13 @@ async function verifiedDraftScope() {
 export async function admitDraftSeed(workspaceId: string) {
   if (!uuid(workspaceId) || (await verifiedDraftScope())?.id !== workspaceId)
     return false;
-  const store = await cookies();
+  initializeDraftSeed(await cookies());
+  return true;
+}
+
+function initializeDraftSeed(store: Store) {
   const seed = seedFor(store);
-  if (seed?.policy === "ready" || seed?.policy === "legacy") return true;
+  if (seed?.policy === "ready" || seed?.policy === "legacy") return;
   // Older browsers have no trustworthy membership timestamp for unresolved writes.
   store.set(
     draftSeedCookie,
@@ -92,7 +100,6 @@ export async function admitDraftSeed(workspaceId: string) {
     if (/^savia-draft-(?:[a-f0-9]{32}|receipt-[a-f0-9-]{36})$/.test(name))
       store.set(name, "", { ...options, maxAge: 0 });
   }
-  return true;
 }
 
 function load(store: Store): State {
@@ -216,6 +223,14 @@ export async function persistentDraft(
   }
   const { serverTime, form } = verification;
   const store = await cookies();
+  // The preflight action has already validated the payload and workspace.
+  if (shouldAdmitDraft()) {
+    try {
+      initializeDraftSeed(store);
+    } catch {
+      return null;
+    }
+  }
   const seed = seedFor(store);
   if (!seed) return null;
   const preparing = isDraftPreparation();

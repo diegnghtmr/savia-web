@@ -80,7 +80,6 @@ export function DebtPaymentForm({
           <input name="date" type="date" required />
         </label>
         <DraftSubmit
-          workspaceId={bound.workspaceId}
           pending={pending}
           label={pending ? "Guardando…" : "Registrar pago"}
           confirmation={state?.confirmation}

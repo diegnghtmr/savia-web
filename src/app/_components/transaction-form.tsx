@@ -196,7 +196,6 @@ export function TransactionForm({
         )
       )}
       <DraftSubmit
-        workspaceId={bound.workspaceId}
         label={pending ? "Guardando…" : title}
         pending={pending}
         confirmation={confirmation}
