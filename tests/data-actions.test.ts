@@ -361,3 +361,53 @@ it.each([
     expect(link).toHaveAttribute("referrerpolicy", "no-referrer");
   }
 });
+
+// Reviewer regressions (verify mwst8uip). Append to tests/data-actions.test.ts.
+it("replays an import commit with exact original column names after a lost reply", async () => {
+  const mapping = {
+    accountId: id,
+    date: " date ",
+    amount: " amount",
+    description: "description ",
+    dateFormat: "YYYY-MM-DD",
+    debitSign: "negative",
+    accept: "yes",
+  };
+  expect(await admitDraftSeed(workspaceId)).toBe(true);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    expect(await dispatch("import-commit", form(mapping), id)).toEqual({
+      receipt: recordId,
+      href: `/imports/${id}`,
+    });
+  }
+  expect(writes).toHaveLength(2);
+  expect(writes[0].key).toMatch(/^[\da-f-]{36}$/);
+  expect(writes[1]).toEqual(writes[0]);
+  expect(JSON.parse(String(writes[0].body)).columnMapping).toEqual({
+    " date ": "date",
+    " amount": "amount",
+    "description ": "description",
+  });
+});
+
+it("rejects an explicitly supplied debit column when no separate column was selected", async () => {
+  const input = form({
+    accountId: id,
+    date: "date",
+    amount: "amount",
+    description: "description",
+    debitCreditIndicator: "direction",
+    dateFormat: "YYYY-MM-DD",
+    debitSign: "negative",
+    accept: "yes",
+  });
+  expect(await admitDraftSeed(workspaceId)).toBe(true);
+  vi.mocked(requireSession).mockClear();
+  const original = new Map(cookie);
+  expect(await reserve("import-commit", input, id)).toEqual({
+    state: { error: "Revisa la cuenta, las columnas y la confirmación." },
+  });
+  expect(requireSession).not.toHaveBeenCalled();
+  expect(cookie).toEqual(original);
+  expect(writes).toHaveLength(0);
+});

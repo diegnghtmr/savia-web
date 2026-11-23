@@ -60,13 +60,7 @@ function commitImport(id: string | null, form: FormData): Command | string {
     "description",
     "debitCreditIndicator",
   ] as const;
-  const data = fields(form, [
-    "accountId",
-    "accept",
-    "dateFormat",
-    "debitSign",
-    ...labels,
-  ]);
+  const data = fields(form, ["accountId", "accept", "dateFormat", "debitSign"]);
   const accountId = dataId(data?.accountId);
   const invalid = "Revisa la cuenta, las columnas y la confirmación.";
   if (!id || !accountId || !data || data.accept !== "yes") return invalid;
@@ -76,25 +70,30 @@ function commitImport(id: string | null, form: FormData): Command | string {
     !["negative", "positive", "separate_column"].includes(debitSign)
   )
     return invalid;
-  const targets = debitSign === "separate_column" ? labels : labels.slice(0, 3);
-  const sources = targets.map((field) => data[field]);
-  if (
-    new Set(sources).size !== sources.length ||
-    sources.some(
-      (name) =>
-        !name ||
-        name.length > 120 ||
-        ["__proto__", "constructor", "prototype"].includes(name),
+  const entries = new Map<string, string>();
+  for (const label of labels) {
+    const values = form.getAll(label);
+    const [name = ""] = values;
+    if (values.length > 1 || typeof name !== "string") return invalid;
+    if (label === "debitCreditIndicator" && debitSign !== "separate_column") {
+      if (name !== "") return invalid;
+      continue;
+    }
+    if (
+      !name ||
+      name.includes("\0") ||
+      name.length > 120 ||
+      entries.has(name) ||
+      ["__proto__", "constructor", "prototype"].includes(name)
     )
-  )
-    return invalid;
+      return invalid;
+    entries.set(name, label);
+  }
   return {
     route: `import-jobs/${id}/commit`,
     payload: {
       accountId,
-      columnMapping: Object.fromEntries(
-        targets.map((field) => [data[field], field]),
-      ),
+      columnMapping: Object.fromEntries(entries),
       dateFormat,
       debitSign,
       skipDuplicateCandidates: true,

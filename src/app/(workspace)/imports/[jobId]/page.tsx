@@ -100,7 +100,9 @@ export default async function ImportJobPage({
                     >
                       <option value="">Selecciona una columna</option>
                       {headers.map((name) => (
-                        <option key={name}>{name}</option>
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
                       ))}
                     </select>
                   ) : (
