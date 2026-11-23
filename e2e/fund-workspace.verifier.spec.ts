@@ -24,10 +24,10 @@ test("rejects stale fund forms after switching spaces and exposes no edit or wit
     .getByRole("link", { name: "Siguiente" })
     .getAttribute("href"))!;
   await page.goto(detail);
-  for (const role of ["link", "button"] as const)
-    await expect(
-      page.getByRole(role, { name: /editar|retirar|retiro/i }),
-    ).toHaveCount(0);
+  // W18 added fund edit and withdrawal; they must be bound to this verified workspace.
+  await expect(
+    page.getByRole("button", { name: /editar|retirar|retiro/i }),
+  ).toHaveCount(2);
   const contribute = (await page
     .getByRole("link", { name: "Registrar aporte" })
     .getAttribute("href"))!;

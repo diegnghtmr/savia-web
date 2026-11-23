@@ -18,6 +18,13 @@ export const dynamic = "force-dynamic";
 
 type Binding = { userId: string; workspaceId: string };
 
+const invitationLabels = new Map([
+  ["pending", "Pendiente"],
+  ["accepted", "Aceptada"],
+  ["revoked", "Invitación cancelada."],
+  ["expired", "Caducada"],
+]);
+
 function rosterRow(value: unknown) {
   const row = record(value);
   const id = dataId(row?.id);
@@ -38,7 +45,7 @@ export default async function Members({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const { tab, guardado, ...input } = await searchParams;
+  const { tab, guardado, invitacion, ...input } = await searchParams;
   const filters = listFilters(input);
   if (!filters || (tab !== undefined && tab !== "invitations"))
     return <p role="alert">Revisa los filtros de miembros.</p>;
@@ -77,7 +84,10 @@ export default async function Members({
     <>
       <h1>{invitations ? "Invitaciones" : "Miembros del espacio"}</h1>
       <p>{workspace.name}</p>
-      <CapabilityReceipt requested={guardado} {...binding} />
+      {guardado && <CapabilityReceipt requested={guardado} {...binding} />}
+      {invitations && invitacion === "actualizada" && (
+        <p role="alert">La invitación ya no está pendiente.</p>
+      )}
       {canEdit && (
         <a href={invitations ? "/members" : "/members?tab=invitations"}>
           {invitations ? "Ver miembros" : "Ver invitaciones"}
@@ -90,8 +100,31 @@ export default async function Members({
               <li key={item.id}>
                 <h2>{item.name ?? "Nombre no informado"}</h2>
                 <p>
-                  {roleNames[item.role]} · {item.status}
+                  {roleNames[item.role]} ·{" "}
+                  {invitations
+                    ? (invitationLabels.get(item.status) ?? item.status)
+                    : item.status}
                 </p>
+                {invitations && canEdit && item.status === "pending" && (
+                  <CapabilityForm
+                    label="Cancelar invitación"
+                    action={saveCapability.bind(null, {
+                      ...binding,
+                      id: item.id,
+                      kind: "member-invite-revoke",
+                    })}
+                  >
+                    <label className="field">
+                      Confirmo la cancelación
+                      <input
+                        type="checkbox"
+                        name="revoke"
+                        value="yes"
+                        required
+                      />
+                    </label>
+                  </CapabilityForm>
+                )}
                 {!invitations && manages && item.email && <p>{item.email}</p>}
                 {!invitations && canEdit && roles.includes(item.role) && (
                   <MemberControls binding={binding} item={item} roles={roles} />

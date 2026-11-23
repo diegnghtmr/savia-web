@@ -361,11 +361,20 @@ export async function draftReceiptFor(
   workspaceId: string,
   userId: string,
 ) {
+  if (!uuid(resource) || resource === placeholder) return undefined;
   const store = await cookies();
   const seed = seedFor(store);
-  const scope = seed && activeScope(seed.id, workspaceId, userId);
-  return load(store).entries.findLast(
-    (entry) => entry.scope === scope && entry.resource === resource,
+  if (!seed) return undefined;
+  const state = load(store);
+  if (!state.valid) return undefined;
+  const scope = activeScope(seed.id, workspaceId, userId);
+  // Pending entries keep the sentinel until dispatch succeeds.
+  return state.entries.findLast(
+    (entry) =>
+      entry.scope === scope &&
+      entry.resource === resource &&
+      !!entry.receipt &&
+      entry.receipt !== placeholder,
   )?.receipt;
 }
 

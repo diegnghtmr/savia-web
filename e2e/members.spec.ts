@@ -13,7 +13,20 @@ test("manages a collaborative roster without removing its last owner", async ({
   await invite.getByRole("button", { name: "Invitar miembro" }).click();
   await page.getByRole("link", { name: "Continuar" }).click();
   await page.getByRole("link", { name: "Ver invitaciones" }).click();
-  await expect(page.getByRole("heading", { name: email })).toBeVisible();
+  const invitation = page.getByRole("listitem").filter({
+    has: page.getByRole("heading", { name: email }),
+  });
+  await expect(invitation).toContainText("Pendiente");
+  const cancel = invitation.getByRole("form", { name: "Cancelar invitación" });
+  await expect(cancel).toHaveAttribute("data-enhanced", "true");
+  await cancel.getByLabel("Confirmo la cancelación").check();
+  await cancel.getByRole("button", { name: "Cancelar invitación" }).click();
+  const canceled = /\/members\?tab=invitations&guardado=[\da-f-]{36}$/;
+  await expect(page).toHaveURL(canceled);
+  await expect(invitation).toContainText("Invitación cancelada.");
+  await expect(cancel).toHaveCount(0);
+  await page.reload();
+  await expect(invitation).toContainText("Invitación cancelada.");
   await page.getByRole("link", { name: "Ver miembros" }).click();
   const row = (name: string) => {
     const has = page.getByRole("heading", { name });

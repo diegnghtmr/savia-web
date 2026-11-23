@@ -20,8 +20,9 @@ test("shows the verified dashboard and validates the period before loading it", 
   ).toBeVisible();
   await expect(page.getByText("Internet de Casa")).toBeVisible();
   await expect(page.getByText("Música de Casa")).toBeVisible();
-  const unsupported = page.getByRole("button", { name: /Confirmar|Descartar/ });
-  await expect(unsupported).toHaveCount(0);
+  // W18 added subscription decisions for workspace writers.
+  const decisions = page.getByRole("button", { name: /Confirmar|Descartar/ });
+  await expect(decisions).toHaveCount(2);
   await page.getByLabel("Espacio activo").selectOption({ label: "Oficina" });
   await page.getByRole("button", { name: "Cambiar de espacio" }).click();
   await expect(page.getByRole("heading", { name: "Oficina" })).toBeVisible();

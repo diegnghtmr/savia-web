@@ -11,7 +11,7 @@ export async function handleMembers({
   session,
   readJson,
 }) {
-  const [, , , workspaceId, resource, id] = url.pathname.split("/");
+  const [, , , workspaceId, resource, id, action] = url.pathname.split("/");
   const space = session.workspaces.find((item) => item.id === workspaceId);
   if (!space) return json(404, {});
   const state = (space.roster ??= {
@@ -27,6 +27,19 @@ export async function handleMembers({
   if (space.kind !== "family") return json(422, {});
   if (!request.headers["idempotency-key"]) return json(400, {});
   if (resource === "invitations" && request.method === "POST") {
+    if (id) {
+      if (action !== "revoke") return json(404, {});
+      const key = `invitation-revoke:${workspaceId}:${request.headers["idempotency-key"]}`;
+      const previous = session.replays.get(key);
+      if (previous)
+        return previous.id === id ? json(200, previous) : json(409, {});
+      const invitation = state.invitations.find((item) => item.id === id);
+      if (!invitation) return json(404, {});
+      if (invitation.status !== "pending") return json(409, {});
+      invitation.status = "revoked";
+      session.replays.set(key, structuredClone(invitation));
+      return json(200, invitation);
+    }
     const draft = await readJson(request);
     const row = {
       ...draft,
