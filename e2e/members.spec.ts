@@ -1,15 +1,13 @@
 import { expect } from "@playwright/test";
 import { signInAs } from "./auth-helpers";
 import { MEMBERS_USER } from "./fixtures/accounts.mjs";
-import { test } from "./fixtures/browser";
+import { openEnhancedForm, test } from "./fixtures/browser";
 
 test("manages a collaborative roster without removing its last owner", async ({
   page,
 }) => {
   await signInAs(page, MEMBERS_USER.email, MEMBERS_USER.password);
-  await page.goto("/members");
-  const invite = page.getByRole("form", { name: "Invitar miembro" });
-  await expect(invite).toHaveAttribute("data-enhanced", "true");
+  const invite = await openEnhancedForm(page, "/members", "Invitar miembro");
   const email = "invitado@savia.test";
   await invite.getByLabel("Correo de invitación").fill(email);
   await invite.getByRole("button", { name: "Invitar miembro" }).click();

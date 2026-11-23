@@ -1,16 +1,18 @@
 import { expect } from "@playwright/test";
 import { signInAs } from "./auth-helpers";
 import { ONBOARDED_USER } from "./fixtures/accounts.mjs";
-import { test } from "./fixtures/browser";
+import { openEnhancedForm, test } from "./fixtures/browser";
 
 test("lists, creates and revokes a scoped MCP grant with an exact write cap", async ({
   page,
 }) => {
   await signInAs(page, ONBOARDED_USER.email, ONBOARDED_USER.password);
-  await page.goto("/mcp-grants");
+  const create = await openEnhancedForm(
+    page,
+    "/mcp-grants",
+    "Crear permiso MCP",
+  );
   await expect(page.getByText("No hay permisos en esta página.")).toBeVisible();
-  const create = page.getByRole("form", { name: "Crear permiso MCP" });
-  await expect(create).toHaveAttribute("data-enhanced", "true");
   await create.getByLabel("Nombre del cliente").fill("MCP de casa");
   await create.getByRole("checkbox", { name: "transactions:write" }).check();
   await create.getByLabel("Límite por escritura (opcional)").fill("12,34");
