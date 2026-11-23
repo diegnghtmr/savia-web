@@ -140,7 +140,36 @@ async function handle(request, reply) {
     }
     case "GET /auth/v1/user":
       return session ? json(200, session.user) : unauthorized();
+    // Reviewer regression (verify mwtuuj0d): keep session scopes observable.
+    case "GET /v1/me/sessions": {
+      if (!session) return unauthorized();
+      const current = {
+        id: session.user.id,
+        current: true,
+        createdAt: "2026-01-01T00:00:00Z",
+        lastActiveAt: "2026-01-02T00:00:00Z",
+        accessToken: "DO_NOT_RENDER_ACCESS_CANARY",
+        refreshToken: "DO_NOT_RENDER_REFRESH_CANARY",
+      };
+      const other = {
+        ...current,
+        id: "80000000-0000-4000-8000-000000000003",
+        current: false,
+      };
+      return json(200, {
+        items: session.reviewerOthersRevoked ? [current] : [current, other],
+        pageInfo: { hasNextPage: false },
+      });
+    }
+    case "POST /v1/me/sessions/revoke-others":
+      if (!session) return unauthorized();
+      if (request.headers["x-workspace-id"] || request.headers["content-type"])
+        return json(400, {});
+      session.reviewerOthersRevoked = true;
+      return reply.writeHead(204).end();
     case "POST /auth/v1/logout":
+      if (url.searchParams.get("scope") !== "global")
+        return json(400, { message: "Expected global sign-out" });
       if (!session) return unauthorized();
       sessions.delete(bearer);
       return reply.writeHead(204).end();

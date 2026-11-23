@@ -66,7 +66,7 @@ test("compares income and expenses and reads category spending for the selected 
   ).toBeVisible();
   await page.goto("/analytics?from=2026-01-01&to=2026-02-30");
   await expect(page.locator("main").getByRole("alert")).toHaveText(
-    "Revisa el período y los filtros.",
+    "Revisa el período.",
   );
 });
 

@@ -1,25 +1,36 @@
 import "server-only";
 
+import type { AnalyticsFilters } from "./analytics-filters";
 import { fxProvenance } from "./fx-provenance";
 import { baseAmount, insightsTransport, record } from "./insights-gateway";
-import type { InsightsPeriod } from "./insights-period";
 import { calendarDate } from "./view-filters";
 
 export async function readBalanceProjection(
   token: string,
   workspace: Parameters<typeof insightsTransport>[1],
-  period: InsightsPeriod,
+  { period, presentationCurrency, query }: AnalyticsFilters,
 ) {
-  const currency = workspace.baseCurrency;
+  const currency = presentationCurrency ?? workspace.baseCurrency;
   if (!currency) return null;
+  const params = new URLSearchParams({
+    ...period,
+    metric: "balance_projection",
+  });
+  if (presentationCurrency)
+    params.set("presentationCurrency", presentationCurrency);
+  for (const id of query.getAll("accountIds")) params.append("accountIds", id);
   const response = await insightsTransport(token, workspace)(
     "analytics/advanced",
-    new URLSearchParams({ ...period, metric: "balance_projection" }),
+    params,
     { signal: AbortSignal.timeout(5000) },
   );
   if (response?.status !== 200) return null;
   const body = record(await response.json().catch(() => null));
-  if (body?.metric !== "balance_projection") return null;
+  if (
+    body?.metric !== "balance_projection" ||
+    (body.currency ?? workspace.baseCurrency) !== currency
+  )
+    return null;
   const data = record(body.data);
   if (!Array.isArray(data?.months)) return null;
   const opening = baseAmount(

@@ -31,11 +31,15 @@ export default async function AnalyticsPage({
   searchParams: Promise<SearchParams>;
 }) {
   const filters = analyticsFilters(await searchParams);
-  if (!filters) {
+  if (!filters || filters === "invalid-period") {
     return (
       <>
         <h1>Analítica</h1>
-        <p role="alert">Revisa el período y los filtros.</p>
+        <p role="alert">
+          {filters === "invalid-period"
+            ? "Revisa el período."
+            : "Revisa los filtros."}
+        </p>
         <AnalyticsForm />
       </>
     );
@@ -59,7 +63,7 @@ export default async function AnalyticsPage({
       presentationCurrency,
     ),
     readCashFlow(accessToken, workspace, filters),
-    readBalanceProjection(accessToken, workspace, period),
+    readBalanceProjection(accessToken, workspace, filters),
     metric ? readAdvanced(accessToken, workspace, filters, metric) : null,
   ]);
   const hasRates =

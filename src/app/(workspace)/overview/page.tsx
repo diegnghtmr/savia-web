@@ -7,7 +7,7 @@ import { WorkspaceRecovery } from "@/app/_components/workspace-recovery";
 import { WorkspaceSelector } from "@/app/_components/workspace-selector";
 import { readPreferences } from "@/lib/dashboard-preferences";
 import { readSummary } from "@/lib/insights-gateway";
-import { insightsPeriod } from "@/lib/insights-period";
+import { insightsPeriod, type InsightsPeriod } from "@/lib/insights-period";
 import { readDetected, readUpcoming } from "@/lib/overview-recurring";
 import { requireProfile } from "@/lib/require-profile";
 import type { SearchParams } from "@/lib/view-filters";
@@ -70,14 +70,12 @@ export default async function OverviewPage({
     : Promise.resolve(null);
   const summary = preferencesRead.then(async (result) => {
     const preferences = typeof result === "object" ? result : null;
-    const savedPeriod = preferences?.period;
-    const explicit = input.from !== undefined;
+    const savedPeriod = input.from === undefined ? preferences?.period : null;
     const selected =
-      !explicit && savedPeriod?.preset === "custom"
+      savedPeriod?.preset === "custom"
         ? { from: savedPeriod.from, to: savedPeriod.to }
-        : period;
-    const presetUnavailable =
-      !explicit && !!savedPeriod && savedPeriod.preset !== "custom";
+        : utcPresetPeriod(period, savedPeriod?.preset);
+    const presetUnavailable = !!savedPeriod && savedPeriod.preset !== "custom";
     const summary = await withDeadline((signal) =>
       readSummary(
         accessToken,
@@ -149,6 +147,21 @@ export default async function OverviewPage({
       </Suspense>
     </>
   );
+}
+
+function utcPresetPeriod(
+  period: InsightsPeriod,
+  preset?: "this_month" | "this_quarter" | "this_year",
+): InsightsPeriod {
+  const { to } = period;
+  const year = to.slice(0, 4);
+  if (preset === "this_year") return { from: `${year}-01-01`, to };
+  if (preset === "this_quarter") {
+    const month = Number(to.slice(5, 7));
+    const start = 1 + 3 * Math.floor((month - 1) / 3);
+    return { from: `${year}-${String(start).padStart(2, "0")}-01`, to };
+  }
+  return period;
 }
 
 async function withDeadline<T>(read: (signal: AbortSignal) => Promise<T>) {

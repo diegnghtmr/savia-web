@@ -257,7 +257,7 @@ it("rejects malformed analytics dimension IDs before session or fetch", async ()
       }),
     }),
   );
-  expect(screen.getByRole("alert")).toBeVisible();
+  expect(screen.getByRole("alert").textContent).toBe("Revisa los filtros.");
   expect(requireSession).not.toHaveBeenCalled();
   expect(fetchImpl).not.toHaveBeenCalled();
 });
@@ -400,4 +400,193 @@ it.each([
     await page;
     vi.useRealTimers();
   }
+});
+
+// Reviewer regression (verify mwtuuj0d). Append to tests/overview-insights.test.tsx.
+it.each([
+  ["this_month", "2026-08-01"],
+  ["this_quarter", "2026-07-01"],
+  ["this_year", "2026-01-01"],
+])(
+  "reviewer: applies the saved %s in UTC when workspace zone is unknown",
+  async (preset, from) => {
+    const fixture = fetchImpl.getMockImplementation()!;
+    const to = "2026-08-19";
+    const sent: Record<string, string>[] = [];
+    vi.setSystemTime(new Date(`${to}T12:00:00Z`));
+    try {
+      fetchImpl.mockImplementation(async (input, init) => {
+        const url = new URL(String(input));
+        if (url.pathname === "/v1/me/dashboard-preferences") {
+          return Response.json(
+            {
+              version: 7,
+              period: { preset },
+              cards: [{ id: "income", visible: true }],
+              presentationCurrency: "COP",
+            },
+            { headers: { etag: '"7"' } },
+          );
+        }
+        if (url.pathname === "/v1/analytics/summary") {
+          sent.push(Object.fromEntries(url.searchParams));
+          return Response.json({
+            ...summary,
+            periodStart: url.searchParams.get("from"),
+            periodEnd: url.searchParams.get("to"),
+          });
+        }
+        return fixture(input, init);
+      });
+      await renderPeriod({});
+      expect(sent).toEqual([{ from, to, presentationCurrency: "COP" }]);
+      expect(screen.getByLabelText("Desde")).toHaveValue(from);
+      expect(screen.getByText(/período.*UTC/i)).toBeVisible();
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
+
+it("reviewer: keeps the existing alert for a malformed analytics period", async () => {
+  render(
+    await Analytics({
+      searchParams: Promise.resolve({
+        from: "2026-01-01",
+        to: "2026-02-30",
+      }),
+    }),
+  );
+  expect(screen.getByRole("alert").textContent).toBe("Revisa el período.");
+  expect(requireSession).not.toHaveBeenCalled();
+  expect(fetchImpl).not.toHaveBeenCalled();
+});
+
+it.each([404, 501])(
+  "reviewer: marks cash flow and a typed metric unavailable on %s",
+  async (status) => {
+    const fixture = fetchImpl.getMockImplementation()!;
+    fetchImpl.mockImplementation(async (input, init) => {
+      const url = new URL(String(input));
+      const unavailable = ["/v1/analytics/cash-flow", "/v1/analytics/advanced"];
+      return unavailable.includes(url.pathname)
+        ? new Response(null, { status })
+        : fixture(input, init);
+    });
+    render(
+      await Analytics({
+        searchParams: Promise.resolve({
+          ...period,
+          metric: "spending_heatmap",
+          granularity: "year",
+        }),
+      }),
+    );
+    expect(
+      screen.getByText("El flujo de caja no está disponible."),
+    ).toBeVisible();
+    expect(screen.getByText("La métrica no está disponible.")).toBeVisible();
+    expect(screen.getByText("Proyección no disponible.")).toBeVisible();
+    expect(
+      screen.queryByRole("table", { name: "Tipos de cambio utilizados" }),
+    ).toBeNull();
+  },
+);
+
+it("applies the selected currency and account to balance projection", async () => {
+  const fixture = fetchImpl.getMockImplementation()!;
+  const sent: Record<string, string>[] = [];
+  fetchImpl.mockImplementation(async (input, init) => {
+    const url = new URL(String(input));
+    if (
+      url.pathname === "/v1/analytics/summary" ||
+      url.pathname === "/v1/analytics/cash-flow"
+    )
+      return new Response(null, { status: 404 });
+    if (url.pathname === "/v1/analytics/advanced") {
+      sent.push(Object.fromEntries(url.searchParams));
+      return Response.json({
+        metric: "balance_projection",
+        currency: url.searchParams.get("presentationCurrency") ?? "COP",
+        generatedAt: "2026-02-28T00:00:00Z",
+        assumptions: [],
+        missingData: [],
+        data: {
+          openingBalanceMinor: "1000",
+          basisMonths: 1,
+          meanMonthlyIncomeMinor: "2000",
+          meanMonthlyExpensesMinor: "1500",
+          months: [
+            {
+              month: period.from,
+              expectedInflowMinor: "2000",
+              expectedOutflowMinor: "1500",
+              projectedBalanceMinor: "1500",
+            },
+          ],
+        },
+      });
+    }
+    return fixture(input, init);
+  });
+  render(
+    await Analytics({
+      searchParams: Promise.resolve({
+        ...period,
+        presentationCurrency: "USD",
+        accountIds: other,
+      }),
+    }),
+  );
+  expect(sent).toEqual([
+    {
+      ...period,
+      metric: "balance_projection",
+      presentationCurrency: "USD",
+      accountIds: other,
+    },
+  ]);
+  expect(screen.getByText(/Saldo inicial: USD\s10,00/)).toBeVisible();
+  expect(
+    screen.getByRole("row", { name: /2026-01-01.*USD\s15,00/ }),
+  ).toBeVisible();
+});
+
+it("keeps both valuation-time observations for the same FX pair", async () => {
+  const fixture = fetchImpl.getMockImplementation()!;
+  fetchImpl.mockImplementation(async (input, init) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/v1/analytics/summary") {
+      const rate = {
+        baseCurrency: "USD",
+        quoteCurrency: "COP",
+        rate: "3980.2500",
+        rateDate: "2026-01-01",
+        source: "frankfurter",
+      };
+      return Response.json({
+        ...summary,
+        fxRatesUsed: [
+          { ...rate, freshness: "fresh" },
+          { ...rate, freshness: "stale" },
+        ],
+      });
+    }
+    return fixture(input, init);
+  });
+  await renderPeriod();
+  const table = screen.getByRole("table", {
+    name: "Tipos de cambio utilizados",
+  });
+  expect(
+    Array.from(table.querySelectorAll("tbody tr"), (row) =>
+      Array.from(row.children, (cell) => cell.textContent),
+    ),
+  ).toEqual([
+    ["USD / COP", "3980.2500", "2026-01-01", "frankfurter", "Vigente"],
+    ["USD / COP", "3980.2500", "2026-01-01", "frankfurter", "Vencida"],
+  ]);
+  expect(
+    screen.queryByText("Vigencia de las conversiones: desconocida"),
+  ).not.toBeInTheDocument();
 });

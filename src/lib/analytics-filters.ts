@@ -39,6 +39,8 @@ export function analyticsFilters(input: SearchParams) {
     presentationCurrency,
     ...filters
   } = input;
+  const period = insightsPeriod({ from, to });
+  if (!period) return "invalid-period" as const;
   if (
     typeof granularity !== "string" ||
     !Object.hasOwn(granularities, granularity) ||
@@ -50,8 +52,6 @@ export function analyticsFilters(input: SearchParams) {
         !/^(?:[A-Z]{3})?$/.test(presentationCurrency)))
   )
     return null;
-  const period = insightsPeriod({ from, to });
-  if (!period) return null;
   const query = new URLSearchParams(period);
   if (presentationCurrency)
     query.set("presentationCurrency", presentationCurrency);
@@ -77,4 +77,7 @@ export function analyticsFilters(input: SearchParams) {
     query,
   };
 }
-export type AnalyticsFilters = NonNullable<ReturnType<typeof analyticsFilters>>;
+export type AnalyticsFilters = Exclude<
+  ReturnType<typeof analyticsFilters>,
+  "invalid-period" | null
+>;

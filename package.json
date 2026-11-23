@@ -6,7 +6,7 @@
   "packageManager": "pnpm@11.15.1+sha512.81350b07e53c9538a02f1f2303b4290fa2d7be04e56e2a970c4cc4b417dc761de196edabd49d55c7dc9580db81007c44143e4e3d7e462b3000d23c255122d065",
   "scripts": {
     "check": "prettier --check . && eslint . && tsc --noEmit",
-    "test:component": "vitest run tests/page.test.tsx tests/onboarding-form.test.tsx tests/auth-form.test.tsx tests/workspace-selector.test.tsx tests/draft-submit.test.tsx",
+    "test:component": "vitest run tests/page.test.tsx tests/onboarding-form.test.tsx tests/auth-form.test.tsx tests/workspace-selector.test.tsx tests/draft-submit.test.tsx tests/bulk-preview.verifier.test.tsx",
     "test:unit": "vitest run tests/theme.test.tsx tests/onboarding-draft.test.ts",
     "test:server": "vitest run tests/recovery-session.test.ts tests/server-config.test.ts tests/session.test.ts tests/onboarding.test.ts tests/auth-gateway.test.ts tests/app-entry.test.tsx tests/workspace.test.tsx tests/accounts.test.tsx tests/accounts.verifier.test.ts tests/transactions.test.tsx tests/transactions.verifier.test.tsx tests/transaction-writes.verifier.test.ts tests/transfers.test.ts tests/exchange-rates.test.tsx tests/budgets.test.tsx tests/budget-writes.test.ts tests/w5.verifier.test.tsx tests/draft-policy.test.ts tests/draft-expiry.verifier.test.ts tests/funds.test.tsx tests/fund-writes.test.ts tests/debts.test.tsx tests/draft-clock-differential.verifier.test.ts tests/fund-scan.verifier.test.ts tests/debt-payment.test.ts tests/overview-insights.test.tsx tests/data-actions.test.ts tests/capability-actions.test.ts",
     "test:design": "vitest run tests/design-contract.test.ts",
