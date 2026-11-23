@@ -590,3 +590,118 @@ it("keeps both valuation-time observations for the same FX pair", async () => {
     screen.queryByText("Vigencia de las conversiones: desconocida"),
   ).not.toBeInTheDocument();
 });
+
+it.each([
+  ["this_quarter", "2026-04-01", "2026-04-01"],
+  ["this_quarter", "2026-07-01", "2026-07-01"],
+  ["this_quarter", "2026-10-01", "2026-10-01"],
+  ["this_quarter", "2026-12-31", "2026-10-01"],
+  ["this_quarter", "2027-01-01", "2027-01-01"],
+  ["this_year", "2026-12-31", "2026-01-01"],
+  ["this_year", "2027-01-01", "2027-01-01"],
+  ["this_month", "2026-12-31", "2026-12-01"],
+  ["this_month", "2027-01-01", "2027-01-01"],
+])("re-review: resolves %s at %s UTC", async (preset, to, from) => {
+  const fixture = fetchImpl.getMockImplementation()!;
+  vi.setSystemTime(new Date(`${to}T00:00:00Z`));
+  try {
+    fetchImpl.mockImplementation(async (input, init) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/v1/me/dashboard-preferences") {
+        return Response.json(
+          {
+            version: 7,
+            cards: [{ id: "income", visible: true }],
+            period: { preset },
+            presentationCurrency: "COP",
+          },
+          { headers: { etag: '"7"' } },
+        );
+      }
+      if (url.pathname === "/v1/analytics/summary") {
+        return Response.json({
+          ...summary,
+          periodStart: url.searchParams.get("from"),
+          periodEnd: url.searchParams.get("to"),
+        });
+      }
+      return fixture(input, init);
+    });
+
+    await renderPeriod({});
+    const sent = fetchImpl.mock.calls.map(([url]) => new URL(String(url)));
+    expect(
+      sent
+        .filter(({ pathname }) => pathname === "/v1/analytics/summary")
+        .map(({ searchParams }) => Object.fromEntries(searchParams)),
+    ).toEqual([{ from, to, presentationCurrency: "COP" }]);
+    expect(screen.getByLabelText("Desde")).toHaveValue(from);
+    expect(screen.getByLabelText("Hasta")).toHaveValue(to);
+    expect(screen.getByText(/período guardado.*UTC/u)).toBeVisible();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("re-review: forwards all selected account IDs to projection, without unrelated filters", async () => {
+  const fixture = fetchImpl.getMockImplementation()!;
+  const projection: string[][][] = [];
+  fetchImpl.mockImplementation(async (input, init) => {
+    const url = new URL(String(input));
+    if (url.searchParams.get("metric") === "balance_projection") {
+      projection.push([...url.searchParams]);
+      return Response.json({
+        metric: "balance_projection",
+        currency: "USD",
+        generatedAt: `${period.to}T00:00:00Z`,
+        assumptions: [],
+        missingData: [],
+        data: {
+          openingBalanceMinor: "1000",
+          basisMonths: 1,
+          meanMonthlyIncomeMinor: "500",
+          meanMonthlyExpensesMinor: "0",
+          months: [
+            {
+              month: period.from,
+              expectedInflowMinor: "500",
+              expectedOutflowMinor: "0",
+              projectedBalanceMinor: "1500",
+            },
+          ],
+        },
+      });
+    }
+    if (url.pathname.startsWith("/v1/analytics/"))
+      return new Response(null, { status: 501 });
+    return fixture(input, init);
+  });
+
+  render(
+    await Analytics({
+      searchParams: Promise.resolve({
+        ...period,
+        granularity: "year",
+        metric: "spending_heatmap",
+        tagIds: other,
+        accountIds: `${other}, ${id}`,
+        presentationCurrency: "USD",
+      }),
+    }),
+  );
+  expect(projection).toEqual([
+    [
+      ...new URLSearchParams({
+        ...period,
+        metric: "balance_projection",
+        presentationCurrency: "USD",
+      }),
+      ["accountIds", other],
+      ["accountIds", id],
+    ],
+  ]);
+  expect(screen.getByText(/Saldo inicial: USD\s10,00/u)).toBeVisible();
+  expect(
+    screen.getByRole("row", { name: /2026-01-01.*USD\s15,00/u }),
+  ).toBeVisible();
+});
