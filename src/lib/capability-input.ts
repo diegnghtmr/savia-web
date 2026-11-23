@@ -31,6 +31,9 @@ export const providerId = (value: unknown): value is string =>
   typeof value === "string" && /^[a-z0-9][a-z0-9-]{0,63}$/.test(value);
 export const versionTag = (value: unknown): value is string =>
   typeof value === "string" && /^"[1-9]\d{0,9}"$/.test(value);
+const credentialVersionTag = (value: unknown): value is string =>
+  typeof value === "string" && /^"(?:0|[1-9]\d{0,308})"$/.test(value);
+export const creatorOnly = "Solo quien creó la propuesta puede decidir.";
 export const approvalHash = (value: unknown): value is string =>
   typeof value === "string" &&
   !!value.trim() &&
@@ -99,7 +102,7 @@ export function capabilityCommand(
       if (secret === null) return null;
       const sha256 = createHash("sha256").update(secret).digest("hex");
       if (kind === "credential-replace")
-        return id && versionTag(version)
+        return id && credentialVersionTag(version)
           ? {
               route: `ai/credentials/${id}`,
               method: "PATCH",

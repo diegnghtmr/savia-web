@@ -1,3 +1,6 @@
+import { render, screen } from "@testing-library/react";
+import Credentials from "@/app/(workspace)/ai-credentials/page";
+import ApprovalDetail from "@/app/(workspace)/approvals/[approvalId]/page";
 import { approveDevice } from "@/app/_actions/cli-device";
 import { saveCapability } from "@/app/_actions/capabilities";
 import { requireSession } from "@/lib/session";
@@ -450,3 +453,107 @@ it("marks notifications read and saves personal preferences", async () => {
     quietHours,
   });
 });
+
+it("allows replacing a credential returned with only the OpenAPI metadata", async () => {
+  send.mockImplementation((path) => {
+    if (path === "/v1/ai/providers")
+      return Response.json([
+        { providerId: "openai", enabled: true, credentialTypes: ["api_key"] },
+      ]);
+    expect(path).toBe("/v1/ai/credentials");
+    return Response.json([
+      {
+        id,
+        ownerType: "user",
+        ownerSubjectId: userId,
+        providerId: "openai",
+        credentialType: "api_key",
+        maskedIdentifier: "••••4321",
+        status: "active",
+        createdAt: "2026-01-01T00:00:00Z",
+        version: 0,
+      },
+    ]);
+  });
+  render(await Credentials());
+  const masked = screen.getByRole("heading", { name: "openai · ••••4321" });
+  expect(masked).toBeVisible();
+  const replace = screen.getByRole("button", { name: "Reemplazar clave" });
+  expect(replace).toBeEnabled();
+});
+
+it.each([userId, id, "invalid", undefined])(
+  "only renders approval decision controls for the verified creator (%s)",
+  async (createdBy) => {
+    respond = () =>
+      Response.json({
+        id,
+        createdBy,
+        toolName: "Registrar gasto",
+        riskClass: "financial_write",
+        argumentsHash: "hash-from-proposal",
+        status: "pending",
+        expiresAt: "2026-02-01T00:00:00Z",
+        preview: { description: "Propuesta visible" },
+      });
+    render(
+      await ApprovalDetail({
+        params: Promise.resolve({ approvalId: id }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    expect(screen.getByText(/Propuesta visible/)).toBeVisible();
+    for (const name of ["Aprobar propuesta", "Rechazar propuesta"]) {
+      const button = screen.queryByRole("button", { name });
+      if (createdBy === userId) expect(button).toBeEnabled();
+      else expect(button).not.toBeInTheDocument();
+    }
+    if (createdBy !== userId) {
+      const reason = "Solo quien creó la propuesta puede decidir.";
+      expect(screen.getByText(reason)).toBeVisible();
+    }
+  },
+);
+
+it.each(["confirm", "reject"])(
+  "shows the creator-only error for a denied %s",
+  async (kind) => {
+    const bound = bind(kind, { id, argumentsHash: "hash-from-proposal" });
+    const form = input();
+    await reserve(bound, form);
+    respond = () => new Response(null, { status: 403 });
+    expect(await saveCapability(bound, null, form)).toEqual({
+      error: "Solo quien creó la propuesta puede decidir.",
+    });
+    expect(send).toHaveBeenCalledOnce();
+  },
+);
+
+it("dispatches a credential's zero version as one strong If-Match tag", async () => {
+  const bound = bind("credential-replace", { id, version: '"0"' });
+  const form = input({ secret: offlineSecret });
+  await reserve(bound, form);
+  respond = () => Response.json({ replacementSecret: offlineSecret });
+  const result = await saveCapability(bound, null, form);
+  expect(result).toHaveProperty("receipt");
+  expect(send).toHaveBeenCalledOnce();
+  const headers = new Headers(send.mock.calls[0][1].headers);
+  expect(headers.get("if-match")).toBe('"0"');
+  expect(JSON.stringify(result)).not.toContain(offlineSecret);
+  expect([...jar.values()].join()).not.toContain(offlineSecret);
+});
+
+it.each([409, 412])(
+  "refreshes a replacement conflict (%s) without redispatching",
+  async (status) => {
+    const bound = bind("credential-replace", { id, version: '"4"' });
+    const form = input({ secret: offlineSecret });
+    await reserve(bound, form);
+    respond = () => Response.json({}, { status });
+    await expect(saveCapability(bound, null, form)).rejects.toThrow(
+      "redirect:/ai-credentials?actualizada=1",
+    );
+    expect(send).toHaveBeenCalledOnce();
+    expect([...jar.values()].join()).not.toContain(offlineSecret);
+  },
+);

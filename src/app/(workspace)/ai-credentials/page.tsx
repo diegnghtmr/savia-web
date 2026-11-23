@@ -1,8 +1,9 @@
 import { saveCapability } from "@/app/_actions/capabilities";
 import { CapabilityForm } from "@/app/_components/capability-form";
-import { providerId, versionTag } from "@/lib/capability-input";
+import { providerId } from "@/lib/capability-input";
 import { dataAccess, dataId } from "@/lib/data-access";
 import { record } from "@/lib/insights-gateway";
+import type { SearchParams } from "@/lib/view-filters";
 
 export const dynamic = "force-dynamic";
 
@@ -38,13 +39,15 @@ function credential(value: unknown, user: string) {
   const raw = row.maskedIdentifier;
   const maskPattern = /^[•*]{4}[A-Za-z0-9_-]{0,4}$/;
   const safe = typeof raw === "string" && maskPattern.test(raw);
-  const tag = typeof row.version === "number" ? `"${row.version}"` : row.etag;
+  const { version } = row;
+  const valid = typeof version === "number" && Number.isInteger(version);
+  const tag = valid && version >= 0 ? `"${BigInt(version)}"` : undefined;
   return [
     {
       id,
       provider: row.providerId,
       mask: safe ? raw : "••••",
-      version: versionTag(tag) ? tag : undefined,
+      version: tag,
     },
   ];
 }
@@ -64,7 +67,10 @@ function Secret({ label }: { label: string }) {
   );
 }
 
-export default async function Credentials() {
+export default async function Credentials({
+  searchParams,
+}: { searchParams?: Promise<SearchParams> } = {}) {
+  const refreshed = (await searchParams)?.actualizada === "1";
   const access = await dataAccess();
   if (!access) return <p role="alert">No hay un espacio activo disponible.</p>;
   const [providers, keys] = await Promise.all([
@@ -79,6 +85,11 @@ export default async function Credentials() {
     <>
       <h1>Claves de IA</h1>
       <p className="eyebrow">{access.workspace.name}</p>
+      {refreshed && (
+        <p role="alert">
+          La clave cambió o hubo un conflicto. Revisa los datos actualizados.
+        </p>
+      )}
       <h2>Agregar clave personal</h2>
       {!choices.length ? (
         <p role="alert">No hay proveedores de claves disponibles.</p>

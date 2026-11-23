@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
 
+export const FOREIGN_APPROVAL_ID = "a0000000-0000-4000-8000-000000000002";
+const foreignCreator = "a0000000-0000-4000-8000-000000000003";
+
 const initialApproval = {
   id: "a0000000-0000-4000-8000-000000000001",
   toolName: "Registrar gasto",
@@ -22,12 +25,19 @@ export async function handleCapabilities({
   if (!space) return json(403, {});
   if (!session.capabilities.has(space.id)) {
     session.capabilities.set(space.id, {
-      approval: { ...initialApproval },
+      approval: { ...initialApproval, createdBy: session.user.id },
       credentials: [],
     });
   }
   const state = session.capabilities.get(space.id);
-  const proposal = state.approval;
+  state.foreignApproval ??= {
+    ...initialApproval,
+    id: FOREIGN_APPROVAL_ID,
+    toolName: "Propuesta ajena",
+    createdBy: foreignCreator,
+  };
+  const foreign = resource === FOREIGN_APPROVAL_ID;
+  const proposal = foreign ? state.foreignApproval : state.approval;
   if (request.method === "GET") {
     if (root === "approvals") {
       if (resource)
@@ -47,6 +57,12 @@ export async function handleCapabilities({
   const body = await readJson(request);
   if (
     root === "approvals" &&
+    foreign &&
+    (action === "confirm" || action === "reject")
+  )
+    return json(403, {});
+  if (
+    root === "approvals" &&
     resource === proposal.id &&
     body.argumentsHash === proposal.argumentsHash
   ) {
@@ -60,6 +76,16 @@ export async function handleCapabilities({
       return json(200, proposal);
     }
   }
+  const credential = root === "ai" && resource === "credentials";
+  if (request.method === "PATCH" && credential) {
+    const row = state.credentials.find(({ id }) => id === action);
+    if (!row || request.headers["if-match"] !== `"${row.version}"`)
+      return json(412, {});
+    if (typeof body.replacementSecret !== "string") return json(422, {});
+    row.version++;
+    row.maskedIdentifier = `••••${body.replacementSecret.slice(-4)}`;
+    return json(200, row);
+  }
   if (
     root === "ai" &&
     resource === "credentials" &&
@@ -67,7 +93,8 @@ export async function handleCapabilities({
   ) {
     const row = {
       id: randomUUID(),
-      version: 1,
+      version: 0,
+      createdAt: "2026-01-01T00:00:00Z",
       providerId: body.providerId,
       credentialType: "api_key",
       ownerType: "user",

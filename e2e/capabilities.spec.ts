@@ -46,11 +46,13 @@ test("gives a native receipt without returning the credential", async ({
   baseURL,
 }) => {
   await signInAs(page, ONBOARDED_USER.email, ONBOARDED_USER.password);
+  await expect(page.getByRole("heading", { name: "Casa" })).toBeVisible();
   const context = await browser.newContext({
     storageState: await page.context().storageState(),
     javaScriptEnabled: false,
     baseURL,
   });
+  context.setDefaultTimeout(5000);
   try {
     const form = await context.newPage();
     const secret = "offline-fixture-slate-1234";
@@ -65,6 +67,36 @@ test("gives a native receipt without returning the credential", async ({
     const masked = form.getByRole("heading", { name: "openai · ••••1234" });
     await expect(masked).toBeVisible();
     expect(await form.content()).not.toContain(secret);
+
+    const stale = await context.newPage();
+    await stale.goto("/ai-credentials");
+    const firstReplacement = "offline-fixture-new-7890";
+    const rejected = "offline-fixture-stale-9876";
+    for (const [tab, value] of [
+      [stale, rejected],
+      [form, firstReplacement],
+    ] as const) {
+      const input = tab.getByLabel("Nueva clave");
+      await input.fill(value);
+      await tab.getByRole("button", { name: "Reemplazar clave" }).click();
+      await expect(input).toHaveValue("");
+      expect(await tab.content()).not.toContain(value);
+    }
+    const updated = { name: "openai · ••••7890" };
+    await form.getByLabel("Nueva clave").fill(firstReplacement);
+    await form.getByRole("button", { name: "Confirmar envío" }).click();
+    await expect(form.getByRole("heading", updated)).toBeVisible();
+    expect(await form.content()).not.toContain(firstReplacement);
+
+    await stale.getByLabel("Nueva clave").fill(rejected);
+    await stale.getByRole("button", { name: "Confirmar envío" }).click();
+    await expect(stale).toHaveURL(/\/ai-credentials\?actualizada=1$/);
+    await expect(stale.getByRole("alert")).toContainText(
+      "Revisa los datos actualizados.",
+    );
+    await expect(stale.getByRole("heading", updated)).toBeVisible();
+    await expect(stale.getByLabel("Nueva clave")).toHaveValue("");
+    expect(await stale.content()).not.toContain(rejected);
   } finally {
     await context.close();
   }

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { agentAnswer } from "@/lib/agent-stream";
 import {
   capabilityCommand,
+  creatorOnly,
   type CapabilityBinding,
 } from "@/lib/capability-input";
 import { dataAccess, dataId, dataObject } from "@/lib/data-access";
@@ -93,8 +94,14 @@ export async function saveCapability(
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(30000),
     });
-    if (response?.status === 412 && bound.kind === "confirm")
+    const status = response?.status;
+    const decision = bound.kind === "confirm" || bound.kind === "reject";
+    if (decision && status === 403) return { error: creatorOnly };
+    if (status === 412 && bound.kind === "confirm")
       redirect(`/approvals/${dataId(bound.id)}?actualizada=1`);
+    const credentialConflict = status === 409 || status === 412;
+    if (bound.kind === "credential-replace" && credentialConflict)
+      redirect("/ai-credentials?actualizada=1");
     if (response?.status === 412)
       return { error: "Los datos cambiaron. Recarga la página." };
     if (bound.kind === "grant-create" && response?.status === 403)

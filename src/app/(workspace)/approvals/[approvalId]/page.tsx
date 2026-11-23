@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { saveCapability } from "@/app/_actions/capabilities";
 import { CapabilityForm } from "@/app/_components/capability-form";
+import { creatorOnly } from "@/lib/capability-input";
 import { approval } from "@/lib/capability-lists";
 import { dataAccess, dataId, dataObject } from "@/lib/data-access";
 import type { SearchParams } from "@/lib/view-filters";
@@ -32,6 +33,7 @@ export default async function ApprovalDetail({
     userId: access.userId,
     argumentsHash: row.hash,
   };
+  const isCreator = !!row.creator && row.creator === dataId(access.userId);
   const confirm = saveCapability.bind(null, { ...scope, kind: "confirm" });
   const reject = saveCapability.bind(null, { ...scope, kind: "reject" });
   return (
@@ -57,12 +59,17 @@ export default async function ApprovalDetail({
       <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
         {JSON.stringify(row.preview, null, 2)}
       </pre>
-      {row.status === "pending" && row.preview && (
-        <>
-          <CapabilityForm action={confirm} label="Aprobar propuesta" />
-          <CapabilityForm action={reject} label="Rechazar propuesta" />
-        </>
-      )}
+      {row.status === "pending" &&
+        (isCreator ? (
+          row.preview && (
+            <>
+              <CapabilityForm action={confirm} label="Aprobar propuesta" />
+              <CapabilityForm action={reject} label="Rechazar propuesta" />
+            </>
+          )
+        ) : (
+          <p>{creatorOnly}</p>
+        ))}
     </>
   );
 }

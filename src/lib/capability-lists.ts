@@ -49,6 +49,7 @@ export function approval(value: unknown) {
     return null;
   return {
     id,
+    creator: dataId(row.createdBy),
     tool: row.toolName,
     risk: row.riskClass,
     hash: row.argumentsHash,
