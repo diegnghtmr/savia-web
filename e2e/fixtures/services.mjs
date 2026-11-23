@@ -340,7 +340,7 @@ async function handle(request, reply) {
         return handleAccounts(request, url, session, json);
       }
       if (
-        /^(?:GET \/v1\/(?:transactions(?:\/[^/]+)?|categories|payees|tags)|POST \/v1\/transactions(?:\/[^/]+\/void)?|PATCH \/v1\/transactions\/[^/]+)$/.test(
+        /^(?:GET \/v1\/(?:transactions(?:\/[^/]+)?|categories|payees|tags)|POST \/v1\/(?:transactions(?:\/[^/]+\/void)?|categories|payees|tags)|PATCH \/v1\/transactions\/[^/]+)$/.test(
           route,
         )
       ) {
@@ -662,7 +662,25 @@ async function handleLedger(session, space, request, url, json) {
         ? json(previous.status, previous.created)
         : json(409, {});
     let created;
-    if (id) {
+    if (resource !== "transactions") {
+      const allowed =
+        resource === "categories"
+          ? ["name", "kind", "parentId", "icon", "colorToken", "essential"]
+          : ["name"];
+      if (
+        typeof body.name !== "string" ||
+        !body.name.trim() ||
+        Object.keys(body).some((key) => !allowed.includes(key)) ||
+        (resource === "categories" &&
+          !["income", "expense", "transfer", "other"].includes(body.kind))
+      )
+        return json(422, {});
+      const name = body.name.toLowerCase();
+      if (ledger[resource].some((row) => row.name.toLowerCase() === name))
+        return json(409, {});
+      created = { ...body, id: randomUUID() };
+      ledger[resource].push(created);
+    } else if (id) {
       if (!row) return json(404, {});
       if (request.headers["if-match"] !== etag(row).etag) return json(412, {});
       if (
@@ -710,7 +728,9 @@ async function handleLedger(session, space, request, url, json) {
     return json(
       status,
       created,
-      operation === "void" ? undefined : etag(created),
+      operation === "void" || resource !== "transactions"
+        ? undefined
+        : etag(created),
     );
   }
   if (id) return row ? json(200, row, etag(row)) : json(404, {});

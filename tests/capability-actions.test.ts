@@ -1,8 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import Credentials from "@/app/(workspace)/ai-credentials/page";
 import ApprovalDetail from "@/app/(workspace)/approvals/[approvalId]/page";
+import Members from "@/app/(workspace)/members/page";
 import { approveDevice } from "@/app/_actions/cli-device";
 import { saveCapability } from "@/app/_actions/capabilities";
+import { CapabilityReceipt } from "@/app/_components/capability-receipt";
 import { draftReceiptFor } from "@/lib/draft-idempotency";
 import { requireSession } from "@/lib/session";
 
@@ -188,6 +190,190 @@ it("rejects invalid W18 mutations before session or draft writes", async () => {
   expect(requireSession).not.toHaveBeenCalled();
   expect(send).not.toHaveBeenCalled();
   expect(jar).toEqual(initial);
+});
+
+// Reviewer regression (verify mwtpt2lz).
+it("offers cancellation for a pending workspace invitation", async () => {
+  send.mockImplementation((path) => {
+    expect(path).toBe(`/v1/workspaces/${workspaceId}/invitations`);
+    return Response.json({
+      items: [
+        {
+          id,
+          email: "pending@savia.test",
+          role: "viewer",
+          status: "pending",
+          createdAt: "2026-01-01T00:00:00Z",
+          expiresAt: "2026-02-01T00:00:00Z",
+        },
+      ],
+      pageInfo: { hasNextPage: false },
+    });
+  });
+
+  render(
+    await Members({ searchParams: Promise.resolve({ tab: "invitations" }) }),
+  );
+  expect(
+    screen.getByRole("heading", { name: "pending@savia.test" }),
+  ).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: /(?:cancelar|revocar) invitación/i }),
+  ).toBeEnabled();
+});
+
+it("revokes an invitation only after confirmation and a verified manager role", async () => {
+  const bound = bind("member-invite-revoke", { id });
+  const form = input({ revoke: "yes" });
+  const initial = new Map(jar);
+  expect(await saveCapability(bound, null, input())).toEqual({
+    error: "Revisa los datos del formulario.",
+  });
+  expect(requireSession).not.toHaveBeenCalled();
+  role = "editor";
+  expect(await saveCapability(bound, null, form)).toEqual({
+    error: "No tienes permiso para gestionar miembros.",
+  });
+  expect(jar).toEqual(initial);
+  expect(send).not.toHaveBeenCalled();
+  role = "administrator";
+  await reserve(bound, form);
+  expect(send).not.toHaveBeenCalled();
+  respond = () => Response.json({ id, status: "revoked" });
+  await expect(saveCapability(bound, null, form)).rejects.toThrow(
+    /^redirect:\/members\?tab=invitations&guardado=[\da-f-]{36}$/,
+  );
+  expect(send).toHaveBeenCalledOnce();
+  const [path, request] = send.mock.calls[0];
+  expect(path).toBe(`/v1/workspaces/${workspaceId}/invitations/${id}/revoke`);
+  expect(request.method).toBe("POST");
+  expect(request.body).toBeUndefined();
+  const key = new Headers(request.headers).get("idempotency-key")!;
+  expect(key).toMatch(/^[\da-f-]{36}$/);
+  expect(await draftReceiptFor(key, workspaceId, userId)).toBe(key);
+});
+
+it("renders only a completed receipt for the matching user and workspace", async () => {
+  const bound = bind("member-remove", { id });
+  const form = input({ remove: "yes" });
+  await reserve(bound, form);
+  const sentinel = "00000000-0000-0000-0000-000000000000";
+  const lookup = (requested: string, user = userId, workspace = workspaceId) =>
+    CapabilityReceipt({ requested, workspaceId: workspace, userId: user });
+  expect(await lookup(sentinel)).toBeNull();
+  expect(await lookup(id)).toBeNull();
+  respond = () => new Response(null, { status: 204 });
+  await expect(saveCapability(bound, null, form)).rejects.toThrow("redirect:");
+  const headers = new Headers(send.mock.calls[0][1].headers);
+  const key = headers.get("idempotency-key")!;
+  expect(await lookup(key, id)).toBeNull();
+  expect(await lookup(key, userId, id)).toBeNull();
+  render(await lookup(key));
+  expect(screen.getByText("Solicitud completada.")).toBeVisible();
+});
+
+it.each([
+  ["category", "categories"],
+  ["payee", "payees"],
+  ["tag", "tags"],
+])("creates a catalog %s with contract fields", async (kind, path) => {
+  const binding = bind(`catalog-${kind}`);
+  const optional = { parentId: id, icon: "basket", colorToken: "accent" };
+  const category = { kind: "expense", essential: "yes", ...optional };
+  const form = input({ name: "  Mercado de prueba  " });
+  if (kind === "category")
+    for (const [key, value] of Object.entries(category)) form.set(key, value);
+  await reserve(binding, form);
+  expect(send).not.toHaveBeenCalled();
+  respond = () => Response.json({ id }, { status: 201 });
+  await expect(saveCapability(binding, null, form)).rejects.toThrow(
+    /^redirect:\/catalogs\?guardado=[\da-f-]{36}$/,
+  );
+  expect(send).toHaveBeenCalledOnce();
+  const [route, request] = send.mock.calls[0];
+  expect(route).toBe(`/v1/${path}`);
+  expect(request.method).toBe("POST");
+  expect(JSON.parse(String(request.body))).toEqual({
+    name: "Mercado de prueba",
+    ...(kind === "category" && {
+      ...optional,
+      kind: "expense",
+      essential: true,
+    }),
+  });
+  const headers = new Headers(request.headers);
+  expect(headers.get("x-workspace-id")).toBe(workspaceId);
+  expect(headers.get("idempotency-key")).toMatch(/^[\da-f-]{36}$/);
+});
+
+it("rejects invalid catalog data before session and cannot replay into another workspace", async () => {
+  const category = bind("catalog-category");
+  const original = new Map(jar);
+  const duplicate = input({ name: "Comida", kind: "expense" });
+  duplicate.append("name", "Otra");
+  const invalid = [
+    duplicate,
+    input({ name: " ", kind: "expense" }),
+    input({ name: "a".repeat(121), kind: "expense" }),
+    input({ name: "Comida", kind: "bad" }),
+    input({ name: "Comida", kind: "expense", parentId: "bad" }),
+    input({ name: "Comida", kind: "expense", essential: "true" }),
+  ];
+  for (const form of invalid)
+    expect(await saveCapability(category, null, form)).toEqual({
+      error: "Revisa los datos del formulario.",
+    });
+  const tag = bind("catalog-tag");
+  expect(
+    await saveCapability(tag, null, input({ name: "Viaje", essential: "yes" })),
+  ).toEqual({
+    error: "Revisa los datos del formulario.",
+  });
+  expect(requireSession).not.toHaveBeenCalled();
+  role = "viewer";
+  const data = input({ name: "Viaje" });
+  expect(await saveCapability(tag, null, data)).toEqual({
+    error: "No tienes permiso para modificar este espacio.",
+  });
+  role = "editor";
+  const stale = { ...tag, workspaceId: id };
+  expect(await saveCapability(stale, null, data)).toEqual({
+    error: "El espacio o la sesión cambió. Vuelve a abrir el formulario.",
+  });
+  expect(send).not.toHaveBeenCalled();
+  expect(jar).toEqual(original);
+});
+
+it("reuses the catalog key after a lost response and explains a duplicate name", async () => {
+  const bound = bind("catalog-category");
+  const form = input({ name: "Comida", kind: "expense" });
+  await reserve(bound, form);
+  respond = () => {
+    throw new Error("lost response");
+  };
+  expect(await saveCapability(bound, null, form)).toEqual({
+    error: "No pudimos completar la solicitud.",
+  });
+  const keyOf = (request: RequestInit) =>
+    new Headers(request.headers).get("idempotency-key");
+  const first = send.mock.calls[0][1];
+  expect(JSON.parse(String(first.body))).toEqual({
+    name: "Comida",
+    kind: "expense",
+  });
+  form.delete("draftPrepared");
+  await reserve(bound, form);
+  respond = () => new Response(null, { status: 409 });
+  expect(await saveCapability(bound, null, form)).toEqual({
+    error: "Ya existe un elemento con ese nombre en este espacio.",
+  });
+  expect(send).toHaveBeenCalledTimes(2);
+  const replay = send.mock.calls[1][1];
+  expect(keyOf(replay)).toBe(keyOf(first));
+  expect(replay.body).toBe(first.body);
+  expect(
+    await draftReceiptFor(keyOf(first)!, workspaceId, userId),
+  ).toBeUndefined();
 });
 
 it("validates CLI codes before session and rejects a changed profile", async () => {

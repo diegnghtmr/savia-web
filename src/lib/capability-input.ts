@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
+import { catalogDraft } from "./catalog-input";
 import { dataId } from "./data-access";
 import { strongETag } from "./etag";
 import { fields } from "./financial-draft";
@@ -74,6 +75,18 @@ export function capabilityCommand(
   const id = dataId(bound.id);
   const { kind, argumentsHash, version } = bound;
   switch (kind) {
+    case "catalog-category":
+    case "catalog-payee":
+    case "catalog-tag": {
+      const category = kind === "catalog-category";
+      const route = category
+        ? "categories"
+        : kind === "catalog-payee"
+          ? "payees"
+          : "tags";
+      const body = catalogDraft(form, category);
+      return body && { route, status: 201, body };
+    }
     case "fund-edit":
     case "fund-withdraw": {
       const { currency } = bound;
@@ -176,6 +189,14 @@ export function capabilityCommand(
         personal: true,
       };
     }
+    case "member-invite-revoke":
+      return id && fields(form, ["revoke"])?.revoke === "yes"
+        ? {
+            route: `workspaces/${bound.workspaceId}/invitations/${id}/revoke`,
+            status: 200,
+            personal: true,
+          }
+        : null;
     case "member-role": {
       const role = fields(form, ["role"])?.role;
       return id && workspaceRole(role)

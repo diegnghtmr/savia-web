@@ -45,6 +45,9 @@ export default async function TransactionsPage({
       <Link className="call-to-action" href="/transactions/new">
         Nueva transacción
       </Link>
+      <Link className="call-to-action" href="/catalogs" prefetch={false}>
+        Catálogos
+      </Link>
       <form action="/transactions" method="get">
         {selects.map(([name, label, options]) => {
           const selected = filters.get(name) ?? "";

@@ -22,6 +22,7 @@ const refreshOnSuccess = new Set([
   "grant-revoke",
   "member-role",
   "member-remove",
+  "member-invite-revoke",
   "fund-edit",
   "fund-withdraw",
 ]);
@@ -53,12 +54,14 @@ export async function saveCapability(
   if (!sameWorkspace || access.userId !== bound.userId) return { error: stale };
   const failed = { error: "No pudimos completar la solicitud." };
   const fund = bound.kind.startsWith("fund-");
+  const catalog = bound.kind.startsWith("catalog-");
   const subscription = bound.kind.startsWith("subscription-");
   const overviewQuery = new URLSearchParams(
     subscription ? bound.period : undefined,
   );
   const fundHref = `/funds/${dataId(bound.id)}`;
-  if ((fund || subscription) && !canWriteWorkspace(access.workspace.role))
+  const writing = fund || subscription || catalog;
+  if (writing && !canWriteWorkspace(access.workspace.role))
     return { error: "No tienes permiso para modificar este espacio." };
   const members = bound.kind.startsWith("member-");
   if (members) {
@@ -154,27 +157,43 @@ export async function saveCapability(
     }
     if (members && response?.status === 403)
       return { error: "No tienes permiso para gestionar esos miembros." };
+    if (bound.kind === "member-invite-revoke" && status === 409)
+      redirect("/members?tab=invitations&invitacion=actualizada");
     if (members && response?.status === 409) {
       const problem = await dataObject(response);
       if (problem?.type === "https://savia.app/problems/last-owner-required")
         return { error: "Debe permanecer al menos un propietario activo." };
       return { error: "La solicitud entra en conflicto con el estado actual." };
     }
+    if (catalog && status === 409) {
+      const problem = await dataObject(response);
+      if (problem?.title === "Idempotency key reused with different payload")
+        return {
+          error: "La solicitud entra en conflicto con un envío anterior.",
+        };
+      return { error: "Ya existe un elemento con ese nombre en este espacio." };
+    }
+    if (catalog && status === 422)
+      return { error: "Revisa los datos y la categoría superior." };
     if (response?.status !== command.status) return failed;
+    if (catalog && !dataId((await dataObject(response))?.id)) return failed;
     const answer = chat ? await agentAnswer(response) : undefined;
     if (answer === null) return failed;
     const conversation = bound.kind === "conversation";
     const id = conversation ? dataId((await dataObject(response))?.id) : null;
     if (conversation && !id) return failed;
     key.receipt(key.key);
+    if (catalog) redirect(`/catalogs?guardado=${key.key}`);
     if (subscription) {
       overviewQuery.set("guardado", key.key);
       redirect(`/overview?${overviewQuery}`);
     }
     const target = id ? `/assistant?conversation=${id}` : doneHref(bound.kind);
     const href = fund ? fundHref : target;
-    if (href && refreshOnSuccess.has(bound.kind))
-      redirect(`${href}?guardado=${key.key}`);
+    if (href && refreshOnSuccess.has(bound.kind)) {
+      const separator = href.includes("?") ? "&" : "?";
+      redirect(`${href}${separator}guardado=${key.key}`);
+    }
     return { receipt: key.key, href, ...answer };
   };
   if (tickets.length) return invoke();
@@ -190,6 +209,7 @@ function doneHref(kind: string) {
   if (kind.startsWith("credential-")) return "/ai-credentials";
   if (kind.startsWith("notification-")) return "/notifications";
   if (kind.startsWith("grant-")) return "/mcp-grants";
+  if (kind === "member-invite-revoke") return "/members?tab=invitations";
   if (kind.startsWith("member-")) return "/members";
 }
 
