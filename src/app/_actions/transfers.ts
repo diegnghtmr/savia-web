@@ -10,11 +10,13 @@ import {
 import { calendarDate } from "@/lib/view-filters";
 import { WORKSPACE_ID } from "@/lib/workspace-gateway";
 
+type TransferResult = FinancialResult & { field?: "fee" };
+
 export async function recordTransfer(
   bound: { workspaceId: string; currencies: Record<string, string> },
-  _state: FinancialResult | null,
+  _state: TransferResult | null,
   form: FormData,
-): Promise<FinancialResult> {
+): Promise<TransferResult> {
   const invalid = { error: "Revisa los datos de la transferencia." };
   const input = fields(form, [
     "sourceAccountId",
@@ -47,6 +49,11 @@ export async function recordTransfer(
     ![from, to].every((value) => /^[A-Z]{3}$/.test(value))
   )
     return invalid;
+  if (from !== to && input.fee)
+    return {
+      field: "fee",
+      error: "La comisión solo se admite en transferencias en la misma moneda.",
+    };
   const amount = positiveMoney(input.amount, from);
   const fee = input.fee ? positiveMoney(input.fee, from) : undefined;
   if (!amount || fee === null) return invalid;

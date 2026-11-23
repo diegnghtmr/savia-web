@@ -881,3 +881,112 @@ it.each([409, 412])(
     expect([...jar.values()].join()).not.toContain(offlineSecret);
   },
 );
+
+// Reviewer regressions (verify mwtr6nxw). Append to tests/capability-actions.test.ts.
+it("reviewer: reopens a lost fund withdrawal without another debit", async () => {
+  const bound = bind("fund-withdraw", { id, currency: "COP" });
+  const form = (amount: string, reason = "Reparación") =>
+    input({ accountId: userId, amount, reason });
+  const saved = { fund: 5000, destination: 1000, keys: [] as string[] };
+  const snapshot = () => JSON.stringify(saved);
+  const requests: string[] = [];
+
+  send.mockImplementation((path, request) => {
+    expect(path).toBe(`/v1/funds/${id}/withdrawals`);
+    expect(request.method).toBe("POST");
+    const headers = new Headers(request.headers);
+    expect(headers.get("x-workspace-id")).toBe(workspaceId);
+    expect(headers.has("if-match")).toBe(false);
+    const key = headers.get("idempotency-key")!;
+    requests.push(key);
+    const { accountId, amount, reason } = JSON.parse(String(request.body));
+    expect({ accountId, reason, currency: amount.currency }).toEqual({
+      accountId: userId,
+      reason: "Reparación",
+      currency: "COP",
+    });
+    if (saved.keys.includes(key)) return Response.json({ id }, { status: 201 });
+    const minor = Number(amount.amountMinor);
+    if (minor > saved.fund) {
+      const problem = { code: "insufficient-fund-balance" };
+      return Response.json(problem, { status: 422 });
+    }
+    saved.keys.push(key);
+    saved.fund -= minor;
+    saved.destination += minor;
+    throw new Error("offline fixture lost the committed withdrawal response");
+  });
+
+  const initial = snapshot();
+  const invalidForms = [form("0"), form("-1"), form("1,001"), form("1", " ")];
+  for (const invalid of invalidForms) {
+    expect(await saveCapability(bound, null, invalid)).toEqual({
+      error: "Revisa los datos del formulario.",
+    });
+    expect(snapshot()).toBe(initial);
+  }
+  expect(requests).toEqual([]);
+
+  const excessive = form("50,01");
+  await reserve(bound, excessive);
+  expect(await saveCapability(bound, null, excessive)).toEqual({
+    error: "El saldo guardado del fondo no es suficiente para este retiro.",
+  });
+  expect(snapshot()).toBe(initial);
+
+  const first = form("11,25");
+  await reserve(bound, first);
+  expect(await saveCapability(bound, null, first)).toEqual({
+    error: "No pudimos completar la solicitud.",
+  });
+  expect(saved).toMatchObject({ fund: 3875, destination: 2125 });
+  const committed = snapshot();
+  clock += 60_000;
+
+  const reopened = form("11.25", " Reparación ");
+  await reserve(bound, reopened);
+  const committedKey = requests[1];
+  const receipt = () => draftReceiptFor(committedKey, workspaceId, userId);
+  expect(await receipt()).toBeUndefined();
+  await expect(saveCapability(bound, null, reopened)).rejects.toThrow(
+    `redirect:/funds/${id}?guardado=${committedKey}`,
+  );
+  expect(requests).toEqual([requests[0], committedKey, committedKey]);
+  expect(committedKey).not.toBe(requests[0]);
+  expect(snapshot()).toBe(committed);
+  expect(await receipt()).toBe(committedKey);
+});
+
+it("reviewer: does not replay a stale edit under the refreshed fund version", async () => {
+  const fields = { name: "Reserva de casa" };
+  const old = bind("fund-edit", { id, currency: "COP", version: '"7"' });
+  const next = bind("fund-edit", { id, currency: "COP", version: '"8"' });
+  const sent: string[] = [];
+
+  send.mockImplementation((path, request) => {
+    expect(path).toBe(`/v1/funds/${id}`);
+    expect(request.method).toBe("PATCH");
+    expect(JSON.parse(String(request.body))).toEqual(fields);
+    const headers = new Headers(request.headers);
+    sent.push(headers.get("idempotency-key")!);
+    return headers.get("if-match") === '"7"'
+      ? Response.json({}, { status: 412 })
+      : Response.json({ id, etag: '"9"' }, { status: 200 });
+  });
+
+  const stale = input(fields);
+  await reserve(old, stale);
+  await expect(saveCapability(old, null, stale)).rejects.toThrow(
+    `redirect:/funds/${id}?actualizado=1`,
+  );
+  expect(sent).toHaveLength(1);
+  expect(await draftReceiptFor(sent[0], workspaceId, userId)).toBeUndefined();
+
+  const refreshed = input(fields);
+  await reserve(next, refreshed);
+  await expect(saveCapability(next, null, refreshed)).rejects.toThrow(
+    /\?guardado=/,
+  );
+  expect(sent).toHaveLength(2);
+  expect(sent[0]).not.toBe(sent[1]);
+});

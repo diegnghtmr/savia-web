@@ -162,7 +162,6 @@ function transfer(fields: Record<string, string> = {}) {
     amount: "1,005",
     destinationAmount: "235",
     executedRate: "233.830845771144278606",
-    fee: "0.009",
     date: "2026-11-20",
     ...fields,
   }))

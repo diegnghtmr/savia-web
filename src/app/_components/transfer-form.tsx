@@ -28,12 +28,24 @@ export function TransferForm({
     value: value(key),
     onChange: (
       event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
-    ) => setValues({ ...values, [key]: event.target.value }),
+    ) => {
+      const next = event.target.value;
+      setValues((previous) => {
+        const updated = { ...previous, [key]: next };
+        if (key === "sourceAccountId" || key === "destinationAccountId") {
+          const from = submitted.currencies[updated.sourceAccountId];
+          const to = submitted.currencies[updated.destinationAccountId];
+          if (from && to && from !== to) delete updated.fee;
+        }
+        return updated;
+      });
+    },
   });
   const from = submitted.currencies[value("sourceAccountId")];
   const to = submitted.currencies[value("destinationAccountId")];
   const cross = from && to && from !== to;
   const canChargeFee = !!from && from === to;
+  const feeError = result?.field === "fee" ? result.error : undefined;
   if (result?.receipt)
     return (
       <>
@@ -63,7 +75,7 @@ export function TransferForm({
   ] as const;
   return (
     <form action={action} onReset={(event) => event.preventDefault()}>
-      {result?.error && (
+      {result?.error && !feeError && (
         <p role="alert" className="outcome outcome-error">
           {result.error}
         </p>
@@ -101,16 +113,26 @@ export function TransferForm({
             inputMode={kind === "decimal" ? "decimal" : undefined}
             required={required}
             disabled={key === "fee" && !canChargeFee}
+            aria-invalid={key === "fee" && feeError ? true : undefined}
             aria-describedby={key === "fee" ? "transfer-fee-note" : undefined}
             maxLength={key === "description" ? 500 : undefined}
           />
-          {key === "fee" && (
-            <p id="transfer-fee-note" className="hint">
-              {canChargeFee
-                ? `Se descuenta de la cuenta de origen en ${from}.`
-                : "Disponible solo para transferencias en la misma moneda."}
-            </p>
-          )}
+          {key === "fee" &&
+            (feeError ? (
+              <p
+                id="transfer-fee-note"
+                role="alert"
+                className="outcome outcome-error"
+              >
+                {feeError}
+              </p>
+            ) : (
+              <p id="transfer-fee-note" className="hint">
+                {canChargeFee
+                  ? `Se descuenta de la cuenta de origen en ${from}.`
+                  : "Disponible solo para transferencias en la misma moneda."}
+              </p>
+            ))}
         </div>
       ))}
       <DraftSubmit

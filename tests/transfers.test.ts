@@ -8,8 +8,9 @@ const bound = {
   workspaceId: src,
   currencies: { [src]: "COP", [cop]: "COP", [kwd]: "KWD" },
 };
+const saveCookie = vi.fn();
 vi.mock("next/headers", () => ({
-  cookies: async () => ({ get: () => ({ value: src }), set: vi.fn() }),
+  cookies: async () => ({ get: () => ({ value: src }), set: saveCookie }),
 }));
 vi.mock("@/lib/session", () => ({
   requireSession: vi.fn(async () => ({ accessToken: "offline" })),
@@ -17,6 +18,7 @@ vi.mock("@/lib/session", () => ({
 const fetchImpl = vi.fn<typeof fetch>();
 beforeEach(() => {
   vi.clearAllMocks();
+  fetchImpl.mockReset();
   vi.stubGlobal("fetch", fetchImpl);
   vi.stubEnv("BACKEND_BASE_URL", "https://backend.test");
   vi.stubEnv("SUPABASE_URL", "https://auth.test");
@@ -49,21 +51,53 @@ it("rejects ambiguous drafts, same-account moves and invalid FX before I/O", asy
     draft({ destinationAmount: "1" }),
     draft({
       destinationAccountId: kwd,
+      fee: "",
       destinationAmount: "2.0011",
       executedRate: "1",
     }),
     draft({
       destinationAccountId: kwd,
+      fee: "",
       destinationAmount: "2.001",
       executedRate: "0",
     }),
-    draft({ destinationAccountId: kwd, destinationAmount: "2.001" }),
+    draft({ destinationAccountId: kwd, destinationAmount: "2.001", fee: "" }),
   ])
     expect(await recordTransfer(bound, null, form)).toEqual({
       error: "Revisa los datos de la transferencia.",
     });
   expect(requireSession).not.toHaveBeenCalled();
   expect(fetchImpl).not.toHaveBeenCalled();
+});
+
+it("rejects an explicit FX fee before loading a session or reserving a write", async () => {
+  fetchImpl
+    .mockResolvedValueOnce(Response.json({ id: src }))
+    .mockResolvedValueOnce(
+      Response.json(
+        {
+          items: [{ id: src, name: "Casa" }],
+          pageInfo: { hasNextPage: false },
+        },
+        { headers: { date: "Fri, 20 Nov 2026 12:00:00 GMT" } },
+      ),
+    )
+    .mockResolvedValueOnce(Response.json({ id: cop }, { status: 201 }));
+  for (const fee of ["1500,00", "0"]) {
+    const form = draft({
+      destinationAccountId: kwd,
+      destinationAmount: "17.005",
+      executedRate: "0.02",
+      fee,
+    });
+    expect(await recordTransfer(bound, null, form)).toEqual({
+      error: "La comisión solo se admite en transferencias en la misma moneda.",
+      field: "fee",
+    });
+    expect(requireSession).not.toHaveBeenCalled();
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(saveCookie).not.toHaveBeenCalled();
+  }
 });
 
 it("posts the exact same-currency fee, omits a blank fee and preserves FX replay", async () => {
@@ -95,6 +129,7 @@ it("posts the exact same-currency fee, omits a blank fee and preserves FX replay
   expect(await recordTransfer(bound, null, draft())).toEqual({ receipt: cop });
   const exchange = {
     destinationAccountId: kwd.toUpperCase(),
+    fee: "",
     destinationAmount: "17.005",
     executedRate: "0.0200",
   };
