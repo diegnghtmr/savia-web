@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { E2E_USER } from "../fixtures.ts";
 import {
   DRAFT_CLOCK_USER,
+  MEMBERS_USER,
   NO_DRAFT_CLOCK_USER,
   ONBOARDED_USER,
   RECOVERY_USER,
@@ -13,16 +14,20 @@ import { handleDebts } from "./debts.mjs";
 import { handleScenarios } from "./scenarios.mjs";
 import { handleDataJobs } from "./data-jobs.mjs";
 import { handleCapabilities } from "./capabilities.mjs";
+import { handleMcpGrants } from "./mcp-grants.mjs";
+import { handleMembers } from "./members.mjs";
 
 // This server is test-only and accepts only credentials and sessions it issues.
 const accounts = [
   E2E_USER,
+  MEMBERS_USER,
   ONBOARDED_USER,
   RECOVERY_USER,
   DRAFT_CLOCK_USER,
   NO_DRAFT_CLOCK_USER,
 ];
 const sessions = new Map();
+const memberRoute = /^\/v1\/workspaces\/[^/]+\/(members|invitations)(?:\/|$)/;
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 const encode = (value) =>
   Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -95,7 +100,14 @@ async function handle(request, reply) {
         workspaces:
           account === RECOVERY_USER || account === E2E_USER
             ? []
-            : [workspace("Casa"), workspace("Oficina")],
+            : [
+                workspace(
+                  "Casa",
+                  "COP",
+                  account === MEMBERS_USER ? "family" : "personal",
+                ),
+                workspace("Oficina"),
+              ],
         omitMembershipDate: account === NO_DRAFT_CLOCK_USER,
         membershipDate:
           account === DRAFT_CLOCK_USER ? "Fri, 20 Nov 2026 12:00:00 GMT" : null,
@@ -143,6 +155,13 @@ async function handle(request, reply) {
         timezone: "America/Bogota",
         defaultCurrency: "COP",
       });
+    case "POST /v1/cli/device/approve": {
+      if (!session?.onboarded) return unauthorized();
+      const { userCode } = await readJson(request);
+      return userCode === "ABCDEFGH"
+        ? reply.writeHead(204).end()
+        : json(400, { title: "The user code is invalid or expired." });
+    }
     case "GET /v1/workspaces":
       if (!session) return unauthorized();
       if (session.omitMembershipDate) reply.sendDate = false;
@@ -417,6 +436,28 @@ async function handle(request, reply) {
                 accountsFor(session, space, new Date().toISOString()),
             })
           : json(403, {});
+      }
+      if (memberRoute.test(url.pathname)) {
+        if (!session) return unauthorized();
+        return handleMembers({
+          request,
+          url,
+          reply,
+          json,
+          session,
+          readJson,
+        });
+      }
+      if (/^\/v1\/mcp\/grants(?:\/|$)/.test(url.pathname)) {
+        if (!session) return unauthorized();
+        return handleMcpGrants({
+          request,
+          url,
+          reply,
+          json,
+          session,
+          readJson,
+        });
       }
       if (/^\/v1\/(?:approvals|ai)(?:\/|$)/.test(url.pathname)) {
         if (!session) return unauthorized();

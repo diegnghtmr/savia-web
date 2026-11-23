@@ -24,5 +24,8 @@ export const config = {
     "/approvals/:path*",
     "/ai-credentials",
     "/notifications",
+    "/cli/device",
+    "/mcp-grants",
+    "/members",
   ],
 };

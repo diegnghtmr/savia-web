@@ -12,6 +12,7 @@ import { prepareDraft } from "@/lib/draft-preparation";
 import { draftWarning } from "@/lib/draft-retry";
 import { insightsTransport } from "@/lib/insights-gateway";
 import { loadServerConfig } from "@/lib/server-config";
+import { canManageMembers } from "@/lib/workspace-roles";
 
 export type CapabilityState = {
   error?: string;
@@ -39,6 +40,30 @@ export async function saveCapability(
   const sameWorkspace = access?.workspace.id === bound.workspaceId;
   if (!sameWorkspace || access.userId !== bound.userId) return { error: stale };
   const failed = { error: "No pudimos completar la solicitud." };
+  const members = bound.kind.startsWith("member-");
+  if (members) {
+    const { role, kind } = access.workspace;
+    if (!canManageMembers(role))
+      return { error: "No tienes permiso para gestionar miembros." };
+    if (kind === "personal") {
+      const error = "El espacio personal no admite cambios de miembros.";
+      return { error };
+    }
+    if (!kind) return failed;
+    if (role !== "owner" && command.memberRole === "owner") {
+      const error = "Solo un propietario puede conceder el rol de propietario.";
+      return { error };
+    }
+  }
+  if (command.expiresAt) {
+    const now = access.workspace.serverTime;
+    if (now === null)
+      return { error: "No pudimos verificar la hora del servicio." };
+    if (Date.parse(command.expiresAt) <= now) {
+      const error = "La caducidad debe ser posterior a la hora del servicio.";
+      return { error };
+    }
+  }
   if (command.fingerprint && !secureCredentialTransport()) return failed;
   const { route, method = "POST", version, body } = command;
   const invoke = async (): Promise<CapabilityState> => {
@@ -72,6 +97,20 @@ export async function saveCapability(
       redirect(`/approvals/${dataId(bound.id)}?actualizada=1`);
     if (response?.status === 412)
       return { error: "Los datos cambiaron. Recarga la página." };
+    if (bound.kind === "grant-create" && response?.status === 403)
+      return { error: "Tu rol no permite conceder esos permisos." };
+    if (bound.kind === "grant-create" && response?.status === 422) {
+      const error = "El servicio no aceptó las restricciones del permiso.";
+      return { error };
+    }
+    if (members && response?.status === 403)
+      return { error: "No tienes permiso para gestionar esos miembros." };
+    if (members && response?.status === 409) {
+      const problem = await dataObject(response);
+      if (problem?.type === "https://savia.app/problems/last-owner-required")
+        return { error: "Debe permanecer al menos un propietario activo." };
+      return { error: "La solicitud entra en conflicto con el estado actual." };
+    }
     if (response?.status !== command.status) return failed;
     const answer = chat ? await agentAnswer(response) : undefined;
     if (answer === null) return failed;
@@ -94,6 +133,8 @@ function doneHref(kind: string) {
   if (kind === "confirm" || kind === "reject") return "/approvals";
   if (kind.startsWith("credential-")) return "/ai-credentials";
   if (kind.startsWith("notification-")) return "/notifications";
+  if (kind.startsWith("grant-")) return "/mcp-grants";
+  if (kind.startsWith("member-")) return "/members";
 }
 
 function secureCredentialTransport() {

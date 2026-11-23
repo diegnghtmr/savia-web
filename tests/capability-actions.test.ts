@@ -1,3 +1,4 @@
+import { approveDevice } from "@/app/_actions/cli-device";
 import { saveCapability } from "@/app/_actions/capabilities";
 import { requireSession } from "@/lib/session";
 
@@ -7,6 +8,8 @@ const id = "80000000-0000-4000-8000-000000000003";
 const offlineSecret = "fixture-only-quartz";
 let jar: Map<string, string>;
 let clock: number;
+let role: string;
+let workspaceKind: string;
 let respond: () => Response;
 const send = vi.fn<(path: string, init: RequestInit) => Response>();
 vi.mock("next/headers", () => ({
@@ -28,6 +31,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   jar = new Map([["savia-workspace", workspaceId]]);
   clock = Date.parse("2026-01-01T00:00:00Z");
+  role = "owner";
+  workspaceKind = "family";
   respond = () => Response.json({ id }, { status: 201 });
   vi.stubEnv("BACKEND_BASE_URL", "https://backend.test");
   vi.stubEnv("SUPABASE_URL", "https://auth.test");
@@ -36,14 +41,15 @@ beforeEach(() => {
   vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
     const { pathname } = new URL(url);
     if (pathname === "/v1/me") return Response.json({ id: userId });
-    if (pathname === "/v1/workspaces")
+    if (pathname === "/v1/workspaces") {
+      const kind = workspaceKind;
+      const workspace = { id: workspaceId, name: "Casa", role, kind };
+      const pageInfo = { hasNextPage: false };
       return Response.json(
-        {
-          items: [{ id: workspaceId, name: "Casa" }],
-          pageInfo: { hasNextPage: false },
-        },
+        { items: [workspace], pageInfo },
         { headers: { date: new Date(clock).toUTCString() } },
       );
+    }
     return send(pathname, init);
   });
 });
@@ -68,6 +74,220 @@ async function reserve(bound: ReturnType<typeof bind>, form: FormData) {
   expect(result.prepared).toEqual(expect.stringMatching(/^[\da-f-]{36}$/));
   form.set("draftPrepared", result.prepared!);
 }
+
+it("validates CLI codes before session and rejects a changed profile", async () => {
+  const original = new Map(jar);
+  const duplicate = input({ userCode: "ABCD-EFGH" });
+  duplicate.append("userCode", "ABCDEFGH");
+  for (const form of [duplicate, input({ userCode: "IIII-0000" })]) {
+    expect(await approveDevice(userId, null, form)).toEqual({
+      error: "Revisa el código del dispositivo.",
+    });
+  }
+  expect(requireSession).not.toHaveBeenCalled();
+  expect(
+    await approveDevice(id, null, input({ userCode: "ABCD-EFGH" })),
+  ).toEqual({ error: "La sesión cambió. Vuelve a abrir el formulario." });
+  expect(send).not.toHaveBeenCalled();
+  expect(jar).toEqual(original);
+});
+
+it.each([204, 400, 429])(
+  "handles device approval response %s without exposing the code",
+  async (status) => {
+    const original = new Map(jar);
+    respond = () => new Response(null, { status });
+    const result = await approveDevice(
+      userId,
+      null,
+      input({ userCode: " abcd-efgh " }),
+    );
+    const expected = {
+      204: { approved: true },
+      400: { error: "El código no es válido o ya caducó." },
+      429: { error: "Demasiados intentos. Inténtalo más tarde." },
+    };
+    expect(result).toEqual(expected[status as keyof typeof expected]);
+    expect(send).toHaveBeenCalledOnce();
+    const [route, request] = send.mock.calls[0];
+    expect(route).toBe("/v1/cli/device/approve");
+    expect(request).toMatchObject({
+      method: "POST",
+      cache: "no-store",
+      body: JSON.stringify({ userCode: "ABCDEFGH" }),
+    });
+    expect(new Headers(request.headers).get("x-workspace-id")).toBeNull();
+    expect(jar).toEqual(original);
+  },
+);
+
+const grantInput = () =>
+  input({
+    clientName: "Mi asistente",
+    scope: "transactions:write",
+    cap: "12,34",
+    currency: "cop",
+    expiresAt: "2026-02-01T00:00",
+    schedule: "1 08:00 24:00",
+    tools: "create_transaction",
+  });
+
+it("rejects invalid grant caps and restrictions before session", async () => {
+  const original = new Map(jar);
+  for (const [field, value] of [
+    ["cap", "-0,01"],
+    ["scope", "invalid:write"],
+    ["expiresAt", "2026-02-30T10:00"],
+    ["tools", "unannotated_tool"],
+    ["schedule", "1 20:00 06:00"],
+  ]) {
+    const form = grantInput();
+    form.set(field, value);
+    expect(await saveCapability(bind("grant-create"), null, form)).toEqual({
+      error: "Revisa los datos del formulario.",
+    });
+  }
+  expect(requireSession).not.toHaveBeenCalled();
+  expect(send).not.toHaveBeenCalled();
+  expect(jar).toEqual(original);
+});
+
+it("uses verified workspace and clock for exact, idempotent MCP grant creation", async () => {
+  const form = grantInput();
+  const original = new Map(jar);
+  const bound = bind("grant-create");
+  expect(
+    await saveCapability(bind("grant-create", { workspaceId: id }), null, form),
+  ).toEqual({
+    error: "El espacio o la sesión cambió. Vuelve a abrir el formulario.",
+  });
+  clock = Date.parse("2026-02-01T00:00:00Z");
+  expect(await saveCapability(bound, null, form)).toEqual({
+    error: "La caducidad debe ser posterior a la hora del servicio.",
+  });
+  expect(jar).toEqual(original);
+  expect(send).not.toHaveBeenCalled();
+  clock = Date.parse("2026-01-01T00:00:00Z");
+  await reserve(bound, form);
+  expect(send).not.toHaveBeenCalled();
+  expect(await saveCapability(bound, null, form)).toMatchObject({
+    receipt: expect.any(String),
+    href: "/mcp-grants",
+  });
+  expect(send).toHaveBeenCalledOnce();
+  const [route, request] = send.mock.calls[0];
+  expect(route).toBe("/v1/mcp/grants");
+  expect(request.method).toBe("POST");
+  const headers = new Headers(request.headers);
+  expect(headers.get("x-workspace-id")).toBeNull();
+  expect(headers.get("idempotency-key")).toMatch(/^[\da-f-]{36}$/);
+  expect(JSON.parse(String(request.body))).toEqual({
+    clientName: "Mi asistente",
+    scopes: ["transactions:write"],
+    workspaceIds: [workspaceId],
+    maxWriteAmount: { amountMinor: "1234", currency: "COP" },
+    schedule: [{ dayOfWeek: 1, startTime: "08:00", endTime: "24:00" }],
+    toolAllowlist: ["create_transaction"],
+    expiresAt: "2026-02-01T00:00:00.000Z",
+  });
+});
+
+it("revokes a personal MCP grant with an idempotency key", async () => {
+  const form = input({ revoke: "yes" });
+  const bound = bind("grant-revoke", { id });
+  respond = () => new Response(null, { status: 204 });
+  await reserve(bound, form);
+  expect(send).not.toHaveBeenCalled();
+  expect(await saveCapability(bound, null, form)).toMatchObject({
+    href: "/mcp-grants",
+  });
+  const [route, request] = send.mock.calls[0];
+  expect(route).toBe(`/v1/mcp/grants/${id}`);
+  expect(request.method).toBe("DELETE");
+  expect(new Headers(request.headers).get("idempotency-key")).toMatch(
+    /^[\da-f-]{36}$/,
+  );
+});
+
+it("validates invitations before session and checks verified workspace roles", async () => {
+  const original = new Map(jar);
+  const bound = bind("member-invite");
+  const bad = input({ email: "invalid", role: "owner" });
+  expect(await saveCapability(bound, null, bad)).toEqual({
+    error: "Revisa los datos del formulario.",
+  });
+  expect(requireSession).not.toHaveBeenCalled();
+  const form = input({ email: "Teammate@example.test", role: "owner" });
+  role = "administrator";
+  expect(await saveCapability(bound, null, form)).toEqual({
+    error: "Solo un propietario puede conceder el rol de propietario.",
+  });
+  role = "viewer";
+  expect(await saveCapability(bound, null, form)).toEqual({
+    error: "No tienes permiso para gestionar miembros.",
+  });
+  role = "owner";
+  workspaceKind = "personal";
+  expect(await saveCapability(bound, null, form)).toEqual({
+    error: "El espacio personal no admite cambios de miembros.",
+  });
+  expect(send).not.toHaveBeenCalled();
+  expect(jar).toEqual(original);
+});
+
+it.each([
+  ["member-invite", "POST", "/invitations", 201],
+  ["member-role", "PATCH", `/members/${id}`, 200],
+  ["member-remove", "DELETE", `/members/${id}`, 204],
+] as const)(
+  "scopes %s to the verified workspace",
+  async (kind, method, path, status) => {
+    const form = input({
+      email: "Teammate@example.test",
+      role: "viewer",
+      remove: "yes",
+    });
+    const bound = bind(kind, { id });
+    respond = () => new Response(null, { status });
+    await reserve(bound, form);
+    expect(send).not.toHaveBeenCalled();
+    expect(await saveCapability(bound, null, form)).toMatchObject({
+      href: "/members",
+    });
+    const [route, request] = send.mock.calls[0];
+    expect(route).toBe(`/v1/workspaces/${workspaceId}${path}`);
+    expect(request.method).toBe(method);
+    expect(new Headers(request.headers).get("idempotency-key")).toMatch(
+      /^[\da-f-]{36}$/,
+    );
+    if (method === "POST")
+      expect(JSON.parse(String(request.body))).toEqual({
+        email: "teammate@example.test",
+        role: "viewer",
+      });
+    if (method === "PATCH")
+      expect(JSON.parse(String(request.body))).toEqual({ role: "viewer" });
+    if (method === "DELETE") expect(request.body).toBeUndefined();
+  },
+);
+
+it.each(["member-role", "member-remove"])(
+  "honors last-owner protection for %s",
+  async (kind) => {
+    const form = input({ role: "viewer", remove: "yes" });
+    const bound = bind(kind, { id });
+    respond = () =>
+      Response.json(
+        { type: "https://savia.app/problems/last-owner-required" },
+        { status: 409 },
+      );
+    await reserve(bound, form);
+    expect(await saveCapability(bound, null, form)).toEqual({
+      error: "Debe permanecer al menos un propietario activo.",
+    });
+    expect(send).toHaveBeenCalledOnce();
+  },
+);
 
 it("validates capability input before session", async () => {
   const original = new Map(jar);

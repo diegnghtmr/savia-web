@@ -3,6 +3,8 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { dataId } from "./data-access";
 import { fields } from "./financial-draft";
+import { grantDraft } from "./mcp-grants";
+import { workspaceRole, type WorkspaceRole } from "./workspace-roles";
 
 export type CapabilityBinding = {
   kind: string;
@@ -21,6 +23,8 @@ type Command = {
   fingerprint?: object;
   version?: string;
   personal?: true;
+  expiresAt?: string;
+  memberRole?: WorkspaceRole;
 };
 
 export const providerId = (value: unknown): value is string =>
@@ -122,6 +126,67 @@ export function capabilityCommand(
     case "credential-remove":
       return id
         ? { route: `ai/credentials/${id}`, method: "DELETE", status: 204 }
+        : null;
+    case "member-invite": {
+      const data = fields(form, ["email", "role"]);
+      if (!data || !workspaceRole(data.role)) return null;
+      const email = data.email.toLowerCase();
+      if (
+        email.length > 320 ||
+        email.indexOf("@") > 64 ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+      )
+        return null;
+      return {
+        route: `workspaces/${bound.workspaceId}/invitations`,
+        status: 201,
+        body: { email, role: data.role },
+        memberRole: data.role,
+        personal: true,
+      };
+    }
+    case "member-role": {
+      const role = fields(form, ["role"])?.role;
+      return id && workspaceRole(role)
+        ? {
+            route: `workspaces/${bound.workspaceId}/members/${id}`,
+            status: 200,
+            method: "PATCH",
+            body: { role },
+            memberRole: role,
+            personal: true,
+          }
+        : null;
+    }
+    case "member-remove":
+      return id && fields(form, ["remove"])?.remove === "yes"
+        ? {
+            route: `workspaces/${bound.workspaceId}/members/${id}`,
+            status: 204,
+            method: "DELETE",
+            personal: true,
+          }
+        : null;
+    case "grant-create": {
+      const body = grantDraft(bound.workspaceId, form);
+      return body
+        ? {
+            route: "mcp/grants",
+            status: 201,
+            personal: true,
+            expiresAt: body.expiresAt,
+            body,
+          }
+        : null;
+    }
+    case "grant-revoke":
+      return id && fields(form, ["revoke"])?.revoke === "yes"
+        ? {
+            route: `mcp/grants/${id}`,
+            method: "DELETE",
+            status: 204,
+            personal: true,
+          }
         : null;
     case "notification-read":
       return id

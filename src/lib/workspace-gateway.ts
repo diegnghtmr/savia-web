@@ -1,6 +1,7 @@
 import "server-only";
 
 import { loadServerConfig } from "./server-config";
+import { workspaceRole, type WorkspaceRole } from "./workspace-roles";
 
 export const WORKSPACE_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -10,6 +11,8 @@ interface WorkspaceSummary {
   name: string;
   baseCurrency?: string;
   isOwner?: true;
+  role?: WorkspaceRole;
+  kind?: "personal" | "family" | "shared";
   serverTime: number | null;
 }
 
@@ -72,11 +75,17 @@ export async function listWorkspaces(
         )
           return { kind: "failed" };
         const currency: unknown = entry?.baseCurrency;
+        const role: unknown = entry?.role;
+        const kind: unknown = entry?.kind;
+        const knownKind =
+          kind === "personal" || kind === "family" || kind === "shared";
         items.set(id, {
           id,
           name,
           serverTime,
-          ...(entry?.role === "owner" && { isOwner: true as const }),
+          ...(role === "owner" && { isOwner: true as const }),
+          ...(workspaceRole(role) && { role }),
+          ...(knownKind && { kind }),
           ...(typeof currency === "string" && /^[A-Z]{3}$/.test(currency)
             ? { baseCurrency: currency }
             : {}),

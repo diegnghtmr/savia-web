@@ -83,6 +83,15 @@ export default async function OverviewPage({
           <li>
             <a href="/notifications">Notificaciones</a>
           </li>
+          <li>
+            <a href="/cli/device">Autorizar dispositivo CLI</a>
+          </li>
+          <li>
+            <a href="/mcp-grants">Permisos MCP</a>
+          </li>
+          <li>
+            <a href="/members">Miembros del espacio</a>
+          </li>
         </ul>
       </section>
       <InsightsPeriodForm period={period} />
