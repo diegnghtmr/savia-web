@@ -4,6 +4,7 @@ import { useActionState, useState, useTransition, type ReactNode } from "react";
 import { acknowledgeDraft } from "@/app/_actions/draft-receipt";
 import type { CapabilityState } from "@/app/_actions/capabilities";
 import { withDraftLock } from "@/lib/draft-client";
+import { useHydrated } from "@/lib/use-hydrated";
 import { DraftReceipt } from "./draft-receipt";
 
 export function CapabilityForm({
@@ -20,6 +21,7 @@ export function CapabilityForm({
   children?: ReactNode;
   secret?: boolean;
 }) {
+  const hydrated = useHydrated();
   const [nativeState, submit, nativePending] = useActionState(action, null);
   const [enhanced, setEnhanced] = useState<CapabilityState>();
   const [pending, startTransition] = useTransition();
@@ -56,6 +58,7 @@ export function CapabilityForm({
         <form
           action={submit}
           aria-label={label}
+          data-enhanced={hydrated || undefined}
           autoComplete={secret ? "off" : undefined}
           onSubmit={(event) => {
             event.preventDefault();

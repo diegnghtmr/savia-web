@@ -1,5 +1,6 @@
 import { saveCapability } from "@/app/_actions/capabilities";
 import { CapabilityForm } from "@/app/_components/capability-form";
+import { CapabilityReceipt } from "@/app/_components/capability-receipt";
 import { listFilters, nextPage } from "@/lib/capability-lists";
 import { dataAccess, dataId, dataObject } from "@/lib/data-access";
 import { insightsTransport, record } from "@/lib/insights-gateway";
@@ -37,7 +38,7 @@ export default async function Members({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const { tab, ...input } = await searchParams;
+  const { tab, guardado, ...input } = await searchParams;
   const filters = listFilters(input);
   if (!filters || (tab !== undefined && tab !== "invitations"))
     return <p role="alert">Revisa los filtros de miembros.</p>;
@@ -76,6 +77,7 @@ export default async function Members({
     <>
       <h1>{invitations ? "Invitaciones" : "Miembros del espacio"}</h1>
       <p>{workspace.name}</p>
+      <CapabilityReceipt requested={guardado} {...binding} />
       {canEdit && (
         <a href={invitations ? "/members" : "/members?tab=invitations"}>
           {invitations ? "Ver miembros" : "Ver invitaciones"}

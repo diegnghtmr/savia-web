@@ -15,6 +15,15 @@ import { insightsTransport } from "@/lib/insights-gateway";
 import { loadServerConfig } from "@/lib/server-config";
 import { canManageMembers } from "@/lib/workspace-roles";
 
+// These writes may replace or remove the form in the updated server tree.
+const refreshOnSuccess = new Set([
+  "credential-remove",
+  "credential-replace",
+  "grant-revoke",
+  "member-role",
+  "member-remove",
+]);
+
 export type CapabilityState = {
   error?: string;
   confirmation?: string;
@@ -126,6 +135,8 @@ export async function saveCapability(
     if (conversation && !id) return failed;
     key.receipt(key.key);
     const href = id ? `/assistant?conversation=${id}` : doneHref(bound.kind);
+    if (href && refreshOnSuccess.has(bound.kind))
+      redirect(`${href}?guardado=${key.key}`);
     return { receipt: key.key, href, ...answer };
   };
   if (tickets.length) return invoke();

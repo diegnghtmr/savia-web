@@ -85,8 +85,15 @@ test("gives a native receipt without returning the credential", async ({
     const updated = { name: "openai · ••••7890" };
     await form.getByLabel("Nueva clave").fill(firstReplacement);
     await form.getByRole("button", { name: "Confirmar envío" }).click();
+    await expect(form).toHaveURL(/\/ai-credentials\?guardado=[\da-f-]{36}$/);
     await expect(form.getByRole("heading", updated)).toBeVisible();
+    const recognize = form.getByRole("button", { name: "Reconocer operación" });
+    await expect(recognize).toBeVisible();
+    await expect(form.getByLabel("Nueva clave")).toHaveValue("");
     expect(await form.content()).not.toContain(firstReplacement);
+    await recognize.click();
+    await expect(recognize).toHaveCount(0);
+    await expect(form.getByRole("heading", updated)).toBeVisible();
 
     await stale.getByLabel("Nueva clave").fill(rejected);
     await stale.getByRole("button", { name: "Confirmar envío" }).click();

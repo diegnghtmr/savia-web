@@ -9,6 +9,7 @@ test("manages a collaborative roster without removing its last owner", async ({
   await signInAs(page, MEMBERS_USER.email, MEMBERS_USER.password);
   await page.goto("/members");
   const invite = page.getByRole("form", { name: "Invitar miembro" });
+  await expect(invite).toHaveAttribute("data-enhanced", "true");
   const email = "invitado@savia.test";
   await invite.getByLabel("Correo de invitación").fill(email);
   await invite.getByRole("button", { name: "Invitar miembro" }).click();
@@ -22,18 +23,25 @@ test("manages a collaborative roster without removing its last owner", async ({
   };
   const teammate = row("Miembro de prueba");
   const edit = teammate.getByRole("form", { name: "Cambiar rol" });
+  await expect(edit).toHaveAttribute("data-enhanced", "true");
+  const saved = /\/members\?guardado=[\da-f-]{36}$/;
   await edit.getByLabel("Rol").selectOption("editor");
   await edit.getByRole("button", { name: "Cambiar rol" }).click();
-  await page.getByRole("link", { name: "Continuar" }).click();
+  await expect(page).toHaveURL(saved);
   await expect(teammate.getByText("Editor · active")).toBeVisible();
   const remove = teammate.getByRole("form", { name: "Eliminar miembro" });
   await remove.getByLabel("Confirmo la eliminación").check();
+  const editedUrl = page.url();
   await remove.getByRole("button", { name: "Eliminar miembro" }).click();
-  await page.getByRole("link", { name: "Continuar" }).click();
+  await expect(page).not.toHaveURL(editedUrl);
+  await expect(page).toHaveURL(saved);
+  await expect(teammate).toHaveCount(0);
+  await page.reload();
   await expect(teammate).toHaveCount(0);
   const owner = row("Propietaria de Casa").getByRole("form", {
     name: "Eliminar miembro",
   });
+  await expect(owner).toHaveAttribute("data-enhanced", "true");
   await owner.getByLabel("Confirmo la eliminación").check();
   await owner.getByRole("button", { name: "Eliminar miembro" }).click();
   await expect(owner.getByRole("alert")).toHaveText(

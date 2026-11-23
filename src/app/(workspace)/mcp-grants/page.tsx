@@ -1,5 +1,6 @@
 import { saveCapability } from "@/app/_actions/capabilities";
 import { CapabilityForm } from "@/app/_components/capability-form";
+import { CapabilityReceipt } from "@/app/_components/capability-receipt";
 import { money } from "@/lib/account-money";
 import { listFilters, nextPage } from "@/lib/capability-lists";
 import { dataAccess, dataObject } from "@/lib/data-access";
@@ -15,7 +16,8 @@ export default async function McpGrants({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const filters = listFilters(await searchParams);
+  const { guardado, ...input } = await searchParams;
+  const filters = listFilters(input);
   if (!filters) return <p role="alert">Revisa los filtros de permisos.</p>;
   const access = await dataAccess();
   if (!access) return <p role="alert">No hay un espacio activo disponible.</p>;
@@ -34,6 +36,7 @@ export default async function McpGrants({
     <>
       <h1>Permisos MCP</h1>
       <p>Los permisos nuevos se limitan a {workspace.name}.</p>
+      <CapabilityReceipt requested={guardado} {...binding} />
       {!grants ? (
         <p role="alert">No pudimos cargar tus permisos MCP.</p>
       ) : !grants.items.length ? (

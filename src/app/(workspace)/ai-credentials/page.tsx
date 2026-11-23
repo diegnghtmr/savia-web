@@ -1,5 +1,6 @@
 import { saveCapability } from "@/app/_actions/capabilities";
 import { CapabilityForm } from "@/app/_components/capability-form";
+import { CapabilityReceipt } from "@/app/_components/capability-receipt";
 import { providerId } from "@/lib/capability-input";
 import { dataAccess, dataId } from "@/lib/data-access";
 import { record } from "@/lib/insights-gateway";
@@ -70,7 +71,8 @@ function Secret({ label }: { label: string }) {
 export default async function Credentials({
   searchParams,
 }: { searchParams?: Promise<SearchParams> } = {}) {
-  const refreshed = (await searchParams)?.actualizada === "1";
+  const { actualizada, guardado } = (await searchParams) ?? {};
+  const refreshed = actualizada === "1";
   const access = await dataAccess();
   if (!access) return <p role="alert">No hay un espacio activo disponible.</p>;
   const [providers, keys] = await Promise.all([
@@ -85,6 +87,7 @@ export default async function Credentials({
     <>
       <h1>Claves de IA</h1>
       <p className="eyebrow">{access.workspace.name}</p>
+      {guardado && <CapabilityReceipt requested={guardado} {...scope} />}
       {refreshed && (
         <p role="alert">
           La clave cambió o hubo un conflicto. Revisa los datos actualizados.

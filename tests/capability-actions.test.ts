@@ -3,6 +3,7 @@ import Credentials from "@/app/(workspace)/ai-credentials/page";
 import ApprovalDetail from "@/app/(workspace)/approvals/[approvalId]/page";
 import { approveDevice } from "@/app/_actions/cli-device";
 import { saveCapability } from "@/app/_actions/capabilities";
+import { draftReceiptFor } from "@/lib/draft-idempotency";
 import { requireSession } from "@/lib/session";
 
 const workspaceId = "80000000-0000-4000-8000-000000000001";
@@ -195,15 +196,43 @@ it("uses verified workspace and clock for exact, idempotent MCP grant creation",
   });
 });
 
+async function expectSavedRedirect(
+  bound: ReturnType<typeof bind>,
+  form: FormData,
+  href: string,
+) {
+  const dispatch = saveCapability(bound, null, form);
+  const result = await dispatch.catch((error: unknown) => error);
+  expect(send).toHaveBeenCalledOnce();
+  const headers = new Headers(send.mock.calls[0][1].headers);
+  const key = headers.get("idempotency-key")!;
+  expect(result).toEqual(new Error(`redirect:${href}?guardado=${key}`));
+  expect(await draftReceiptFor(key, workspaceId, userId)).toBe(key);
+  expect(await draftReceiptFor(key, workspaceId, id)).toBeUndefined();
+}
+
+it("shows a scoped receipt on the refreshed roster even when removal unmounts the form", async () => {
+  const bound = bind("member-remove", { id });
+  const form = input({ remove: "yes" });
+  await reserve(bound, form);
+  respond = () => new Response(null, { status: 204 });
+  await expect(saveCapability(bound, null, form)).rejects.toThrow(
+    /^redirect:\/members\?guardado=[\da-f-]{36}$/,
+  );
+  expect(send).toHaveBeenCalledOnce();
+  const headers = new Headers(send.mock.calls[0][1].headers);
+  const key = headers.get("idempotency-key")!;
+  expect(await draftReceiptFor(key, workspaceId, userId)).toBe(key);
+  expect(await draftReceiptFor(key, workspaceId, id)).toBeUndefined();
+});
+
 it("revokes a personal MCP grant with an idempotency key", async () => {
   const form = input({ revoke: "yes" });
   const bound = bind("grant-revoke", { id });
   respond = () => new Response(null, { status: 204 });
   await reserve(bound, form);
   expect(send).not.toHaveBeenCalled();
-  expect(await saveCapability(bound, null, form)).toMatchObject({
-    href: "/mcp-grants",
-  });
+  await expectSavedRedirect(bound, form, "/mcp-grants");
   const [route, request] = send.mock.calls[0];
   expect(route).toBe(`/v1/mcp/grants/${id}`);
   expect(request.method).toBe("DELETE");
@@ -254,9 +283,11 @@ it.each([
     respond = () => new Response(null, { status });
     await reserve(bound, form);
     expect(send).not.toHaveBeenCalled();
-    expect(await saveCapability(bound, null, form)).toMatchObject({
-      href: "/members",
-    });
+    if (method === "POST")
+      expect(await saveCapability(bound, null, form)).toMatchObject({
+        href: "/members",
+      });
+    else await expectSavedRedirect(bound, form, "/members");
     const [route, request] = send.mock.calls[0];
     expect(route).toBe(`/v1/workspaces/${workspaceId}${path}`);
     expect(request.method).toBe(method);
@@ -413,8 +444,7 @@ it.each(credentialChanges)("dispatches %s", async (kind) => {
   await reserve(bound, form);
   const rotating = kind === "credential-replace";
   respond = () => new Response(null, { status: rotating ? 200 : 204 });
-  const result = await saveCapability(bound, null, form);
-  expect(result).toHaveProperty("receipt");
+  await expectSavedRedirect(bound, form, "/ai-credentials");
   const [path, request] = send.mock.calls[0];
   expect(path).toBe(`/v1/ai/credentials/${id}`);
   expect(request.method).toBe(rotating ? "PATCH" : "DELETE");
@@ -534,12 +564,9 @@ it("dispatches a credential's zero version as one strong If-Match tag", async ()
   const form = input({ secret: offlineSecret });
   await reserve(bound, form);
   respond = () => Response.json({ replacementSecret: offlineSecret });
-  const result = await saveCapability(bound, null, form);
-  expect(result).toHaveProperty("receipt");
-  expect(send).toHaveBeenCalledOnce();
+  await expectSavedRedirect(bound, form, "/ai-credentials");
   const headers = new Headers(send.mock.calls[0][1].headers);
   expect(headers.get("if-match")).toBe('"0"');
-  expect(JSON.stringify(result)).not.toContain(offlineSecret);
   expect([...jar.values()].join()).not.toContain(offlineSecret);
 });
 
