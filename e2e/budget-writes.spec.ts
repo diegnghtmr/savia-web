@@ -23,12 +23,18 @@ async function loseResponse(page: Page, button: string) {
   });
   await page.getByRole("button", { name: button }).click();
   await done.promise;
-  await page.unroute(url);
+  const context = page.context();
+  // Release the interrupted document's Web Lock without losing draft cookies.
+  await page.close();
+  const reopened = await context.newPage();
+  await reopened.goto(url);
+  return reopened;
 }
 
 test("replays a lost budget create and edit after reopening, then saves category allocations", async ({
-  page,
+  page: initialPage,
 }) => {
+  let page = initialPage;
   await signInAs(page, ONBOARDED_USER.email, ONBOARDED_USER.password);
   await page.goto("/budgets");
   await page.getByRole("link", { name: "Nuevo presupuesto" }).click();
@@ -38,8 +44,7 @@ test("replays a lost budget create and edit after reopening, then saves category
     await page.getByLabel("Fin del periodo").fill("2026-03-31");
   };
   await create();
-  await loseResponse(page, "Crear presupuesto");
-  await page.reload();
+  page = await loseResponse(page, "Crear presupuesto");
   await create();
   await page.getByRole("button", { name: "Crear presupuesto" }).click();
   await page.getByRole("link", { name: "Ver presupuesto" }).click();
@@ -47,8 +52,7 @@ test("replays a lost budget create and edit after reopening, then saves category
   await expect(page).toHaveURL(/\/edit\/1$/);
   const editUrl = page.url();
   await page.getByLabel("Nombre").fill("Marzo familiar");
-  await loseResponse(page, "Guardar presupuesto");
-  await page.reload();
+  page = await loseResponse(page, "Guardar presupuesto");
   await expect(page.getByLabel("Nombre")).toHaveValue("Marzo familiar");
   await page.getByRole("button", { name: "Guardar presupuesto" }).click();
   await page.getByRole("link", { name: "Ver presupuesto" }).click();
@@ -63,8 +67,7 @@ test("replays a lost budget create and edit after reopening, then saves category
     .getByRole("combobox", { name: "Categoría", exact: true })
     .selectOption({ label: "Alimentación" });
   await page.getByLabel("Importe planeado (COP)").fill("1234,56");
-  await loseResponse(page, "Guardar asignaciones");
-  await page.reload();
+  page = await loseResponse(page, "Guardar asignaciones");
   await expect(page.getByLabel("Importe planeado (COP)")).toHaveValue(
     "1234.56",
   );
