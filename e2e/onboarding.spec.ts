@@ -41,11 +41,10 @@ test("the onboarding form is accessible, responsive, and quiet until submitted",
   await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto("/onboarding", { waitUntil: "domcontentloaded" });
-  // The theme attribute is written before React arrives, removed while React
-  // hydrates, and restored by the control that owns it. Contrast measured
-  // across that window mixes one theme's ink with the other's paper and
-  // reports a violation neither theme has.
-  await page.waitForLoadState("networkidle");
+  // The initial HTML uses the light label; the dark label and attribute
+  // together show that the theme control has applied the client preference.
+  await expect(page.getByText("Tema actual: oscuro")).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 
   await expect(
     page.getByRole("heading", { level: 1, name: "Crea tu espacio" }),

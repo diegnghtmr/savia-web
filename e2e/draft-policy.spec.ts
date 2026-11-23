@@ -1,8 +1,8 @@
-import { expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { signInAs } from "./auth-helpers";
 import { E2E_USER } from "./fixtures";
 import { DRAFT_CLOCK_USER, NO_DRAFT_CLOCK_USER } from "./fixtures/accounts.mjs";
-import { test } from "./fixtures/browser";
+import { test, waitForDraftForm } from "./fixtures/browser";
 
 const seedName = "savia-draft-seed";
 test("does not issue a draft seed on sign-in or onboarding redirects", async ({
@@ -27,8 +27,9 @@ test("requires explicit confirmation when an old submission may have lost its en
   context,
 }) => {
   await signInAs(page, DRAFT_CLOCK_USER.email, DRAFT_CLOCK_USER.password);
-  const fill = async () => {
-    await page.goto("/transactions/new", { waitUntil: "networkidle" });
+  const fill = async (page: Page) => {
+    await page.goto("/transactions/new", { waitUntil: "domcontentloaded" });
+    await waitForDraftForm(page, "Crear transacción");
     await page.getByLabel("Tipo").selectOption("expense");
     await page
       .getByLabel("Cuenta", { exact: true })
@@ -37,7 +38,7 @@ test("requires explicit confirmation when an old submission may have lost its en
     await page.getByLabel("Fecha (UTC)").fill("2026-01-12");
     await page.getByLabel("Descripción").fill("Compra por confirmar");
   };
-  await fill();
+  await fill(page);
   const dispatch = Promise.withResolvers<string>();
   await page.route("**/transactions/new", async (route) => {
     if (
@@ -57,26 +58,30 @@ test("requires explicit confirmation when an old submission may have lost its en
   });
   await page.getByRole("button", { name: "Crear transacción" }).click();
   const original = await dispatch.promise;
-  await page.unroute("**/transactions/new");
-  await fill();
-  await page.getByRole("button", { name: "Crear transacción" }).click();
-  await expect(
-    page.getByRole("form", { name: "Crear transacción" }).getByRole("alert"),
-  ).toHaveText(
+  // Keep the browser cookies but close the interrupted document so it
+  // cannot retain the draft Web Lock into the restored submission.
+  await page.close();
+  const restored = await context.newPage();
+  await fill(restored);
+  await restored.getByRole("button", { name: "Crear transacción" }).click();
+  const form = restored.getByRole("form", { name: "Crear transacción" });
+  await expect(form.getByRole("alert")).toHaveText(
     "Puede que este movimiento ya se haya registrado. Revisa la lista antes de volver a intentarlo.",
   );
-  await expect(page.getByLabel("Importe")).toHaveValue("41,20");
+  await expect(restored.getByLabel("Importe")).toHaveValue("41,20");
   const list = await context.newPage();
   await list.goto("/transactions?query=Compra+por+confirmar");
   await expect(
     list.getByRole("link", { name: "Compra por confirmar" }),
   ).toHaveAttribute("href", original);
   await expect(list.getByRole("link", { name: "Siguiente" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Registrar de todos modos" }).click();
+  await restored
+    .getByRole("button", { name: "Registrar de todos modos" })
+    .click();
   await expect(
-    page.getByRole("heading", { name: "Compra por confirmar" }),
+    restored.getByRole("heading", { name: "Compra por confirmar" }),
   ).toBeVisible();
-  await expect(page).not.toHaveURL(new RegExp(`${original}$`));
+  await expect(restored).not.toHaveURL(new RegExp(`${original}$`));
   await list.reload();
   await expect(list.getByRole("link", { name: "Siguiente" })).toBeVisible();
 });

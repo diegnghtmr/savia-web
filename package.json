@@ -12,6 +12,7 @@
     "test:design": "vitest run tests/design-contract.test.ts",
     "test:audit": "vitest run tests/audit-static.test.ts",
     "test:e2e": "playwright test",
+    "test:e2e:isolated": "unshare -rn sh -c 'ip link set lo up && exec pnpm test:e2e \"$@\"' --",
     "verify:font": "node scripts/verify-font.mjs",
     "build": "next build",
     "start": "next start"

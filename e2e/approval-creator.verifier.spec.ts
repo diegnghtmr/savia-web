@@ -19,7 +19,9 @@ test("a workspace owner cannot reject somebody else's proposal", async ({
 
   const reject = page.getByRole("button", { name: "Rechazar propuesta" });
   if (await reject.isVisible()) {
-    await page.waitForLoadState("networkidle");
+    await expect(
+      page.getByRole("form", { name: "Rechazar propuesta" }),
+    ).toHaveAttribute("data-enhanced", "true");
     await reject.click();
     const outcome =
       /^(rejected|No pudimos completar la solicitud\.|Solicitud completada\.)$/;

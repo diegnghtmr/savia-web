@@ -2,10 +2,11 @@
 import { expect, type Page } from "@playwright/test";
 import { signInAs } from "./auth-helpers";
 import { ONBOARDED_USER } from "./fixtures/accounts.mjs";
-import { test } from "./fixtures/browser";
+import { test, waitForDraftForm } from "./fixtures/browser";
 
 async function fillDraft(page: Page, description: string) {
-  await page.goto("/transactions/new", { waitUntil: "networkidle" });
+  await page.goto("/transactions/new", { waitUntil: "domcontentloaded" });
+  await waitForDraftForm(page, "Crear transacción");
   await page.getByLabel("Tipo").selectOption("expense");
   await page
     .getByLabel("Cuenta", { exact: true })
@@ -34,8 +35,10 @@ test("blocks create, edit and void forms rendered before a workspace switch", as
   const annul = await context.newPage();
   const switcher = await context.newPage();
 
-  await editor.goto(`${detail}?edit=1`, { waitUntil: "networkidle" });
-  await annul.goto(detail, { waitUntil: "networkidle" });
+  await editor.goto(`${detail}?edit=1`, { waitUntil: "domcontentloaded" });
+  await waitForDraftForm(editor, "Guardar cambios");
+  await annul.goto(detail, { waitUntil: "domcontentloaded" });
+  await waitForDraftForm(annul, "Anular transacción");
   await fillDraft(page, "No crear tras cambiar de espacio");
   await editor
     .getByLabel("Descripción")

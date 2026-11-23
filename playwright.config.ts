@@ -20,7 +20,7 @@ export default defineConfig({
     },
     {
       command: "pnpm start --hostname 127.0.0.1",
-      url: app,
+      url: `${app}/sign-in`,
       reuseExistingServer: false,
       env: {
         BACKEND_BASE_URL: services,

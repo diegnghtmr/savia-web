@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { ACCOUNT_TYPES, INFORMAL_DEBT_DIRECTIONS } from "@/lib/account-types";
+import { useHydrated } from "@/lib/use-hydrated";
 import { createAccountAction } from "../_actions/accounts";
 
 export function AccountForm({
@@ -11,6 +12,7 @@ export function AccountForm({
   nonce: string;
   workspaceId: string;
 }) {
+  const hydrated = useHydrated();
   const [submission] = useState({ nonce, workspaceId });
   const [name, setName] = useState("");
   const [currency, setCurrency] = useState("");
@@ -24,7 +26,11 @@ export function AccountForm({
     null,
   );
   return (
-    <form action={submit}>
+    <form
+      action={submit}
+      aria-label="Crear cuenta"
+      data-enhanced={hydrated || undefined}
+    >
       {error && (
         <p className="outcome outcome-error" role="alert">
           {error}

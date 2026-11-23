@@ -2,10 +2,11 @@
 import { expect, type Page } from "@playwright/test";
 import { signInAs } from "./auth-helpers";
 import { ONBOARDED_USER } from "./fixtures/accounts.mjs";
-import { test } from "./fixtures/browser";
+import { test, waitForDraftForm } from "./fixtures/browser";
 
 async function fillDraft(page: Page) {
-  await page.goto("/transactions/new", { waitUntil: "networkidle" });
+  await page.goto("/transactions/new", { waitUntil: "domcontentloaded" });
+  await waitForDraftForm(page, "Crear transacción");
   await page.getByLabel("Tipo").selectOption("expense");
   await page
     .getByLabel("Cuenta", { exact: true })

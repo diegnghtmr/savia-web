@@ -1,7 +1,7 @@
 import { expect } from "@playwright/test";
 import { signInAs } from "./auth-helpers";
 import { ONBOARDED_USER } from "./fixtures/accounts.mjs";
-import { test } from "./fixtures/browser";
+import { test, waitForDraftForm } from "./fixtures/browser";
 
 test("creates, edits and voids, rejecting a stale edit", async ({
   page,
@@ -12,7 +12,7 @@ test("creates, edits and voids, rejecting a stale edit", async ({
   await page
     .getByRole("link", { name: "Nueva transacción" })
     .click({ timeout: 3000 });
-  await page.waitForLoadState("networkidle");
+  await waitForDraftForm(page, "Crear transacción");
   await page.getByLabel("Tipo").selectOption("expense");
   await page
     .getByLabel("Cuenta", { exact: true })
@@ -33,7 +33,9 @@ test("creates, edits and voids, rejecting a stale edit", async ({
   await page.getByRole("link", { name: "Editar transacción" }).click();
   await expect(page.getByLabel("Descripción")).toBeVisible();
   const stale = await context.newPage();
-  await stale.goto(page.url(), { waitUntil: "networkidle" });
+  await stale.goto(page.url(), { waitUntil: "domcontentloaded" });
+  await waitForDraftForm(stale, "Guardar cambios");
+  await waitForDraftForm(page, "Guardar cambios");
   await page.getByLabel("Descripción").fill("Compra actualizada");
   await page.getByRole("button", { name: "Guardar cambios" }).click();
   await expect(
@@ -63,7 +65,8 @@ test("a confirmed create lets the user submit a fresh identical transaction", as
   await signInAs(page, ONBOARDED_USER.email, ONBOARDED_USER.password);
   const paths: string[] = [];
   for (let index = 0; index < 2; index++) {
-    await page.goto("/transactions/new", { waitUntil: "networkidle" });
+    await page.goto("/transactions/new", { waitUntil: "domcontentloaded" });
+    await waitForDraftForm(page, "Crear transacción");
     await page.getByLabel("Tipo").selectOption("expense");
     await page
       .getByLabel("Cuenta", { exact: true })

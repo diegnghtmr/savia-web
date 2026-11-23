@@ -1,10 +1,11 @@
 import { expect, type Page } from "@playwright/test";
 import { signInAs } from "./auth-helpers";
 import { ONBOARDED_USER } from "./fixtures/accounts.mjs";
-import { test } from "./fixtures/browser";
+import { test, waitForAccountForm, waitForDraftForm } from "./fixtures/browser";
 
 async function account(page: Page, name: string, currency: string) {
-  await page.goto("/accounts", { waitUntil: "networkidle" });
+  await page.goto("/accounts", { waitUntil: "domcontentloaded" });
+  await waitForAccountForm(page);
   await page.getByLabel("Nombre de la cuenta").fill(name);
   await page.getByLabel("Moneda").fill(currency);
   await page.getByRole("button", { name: "Crear cuenta" }).click();
@@ -19,7 +20,8 @@ test("records same-currency and cross-currency transfers", async ({ page }) => {
     ["Ahorros COP (COP)", false],
     ["Ahorros USD (USD)", true],
   ] as const) {
-    await page.goto("/transfers", { waitUntil: "networkidle" });
+    await page.goto("/transfers", { waitUntil: "domcontentloaded" });
+    await waitForDraftForm(page, "Registrar transferencia");
     await page
       .getByLabel("Cuenta de origen")
       .selectOption({ label: "Caja (COP)" }, { timeout: 3000 });

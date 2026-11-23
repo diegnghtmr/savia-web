@@ -2,7 +2,7 @@
 import { expect } from "@playwright/test";
 import { signInAs } from "./auth-helpers";
 import { ONBOARDED_USER } from "./fixtures/accounts.mjs";
-import { test } from "./fixtures/browser";
+import { test, waitForAccountForm, waitForDraftForm } from "./fixtures/browser";
 
 test("does not submit a currency exchange while displaying an uncharged fee", async ({
   page,
@@ -12,14 +12,16 @@ test("does not submit a currency exchange while displaying an uncharged fee", as
     ["Destino COP", "COP"],
     ["Destino USD", "USD"],
   ]) {
-    await page.goto("/accounts", { waitUntil: "networkidle" });
+    await page.goto("/accounts", { waitUntil: "domcontentloaded" });
+    await waitForAccountForm(page);
     await page.getByLabel("Nombre de la cuenta").fill(name);
     await page.getByLabel("Moneda").fill(currency);
     await page.getByRole("button", { name: "Crear cuenta" }).click();
     await expect(page.getByRole("heading", { name })).toBeVisible();
   }
 
-  await page.goto("/transfers", { waitUntil: "networkidle" });
+  await page.goto("/transfers", { waitUntil: "domcontentloaded" });
+  await waitForDraftForm(page, "Registrar transferencia");
   const origin = page.getByLabel("Cuenta de origen");
   await origin.selectOption({ label: "Caja (COP)" });
   const destination = page.getByLabel("Cuenta de destino");

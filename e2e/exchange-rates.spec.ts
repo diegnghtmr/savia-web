@@ -1,13 +1,14 @@
 import { expect } from "@playwright/test";
 import { signInAs } from "./auth-helpers";
 import { ONBOARDED_USER } from "./fixtures/accounts.mjs";
-import { test } from "./fixtures/browser";
+import { test, waitForDraftForm } from "./fixtures/browser";
 
 test("shows a stale provider rate and records a fresh manual rate", async ({
   page,
 }) => {
   await signInAs(page, ONBOARDED_USER.email, ONBOARDED_USER.password);
-  await page.goto("/exchange-rates", { waitUntil: "networkidle" });
+  await page.goto("/exchange-rates", { waitUntil: "domcontentloaded" });
+  await waitForDraftForm(page, "Guardar tasa manual");
   await expect(page.getByText("Desactualizada", { exact: true })).toBeVisible({
     timeout: 3000,
   });
