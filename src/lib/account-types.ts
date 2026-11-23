@@ -38,6 +38,8 @@ export const ACCOUNT_STATUSES = {
   archived: "Archivada",
   closed: "Cerrada",
 };
+export const ACCOUNT_STALE =
+  "La cuenta cambió. Recarga la página antes de volver a intentarlo.";
 export type AccountStatus = keyof typeof ACCOUNT_STATUSES;
 export type AccountDraft = {
   name: string;

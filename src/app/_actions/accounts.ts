@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { redirect } from "next/navigation";
 import { decimalToMinor } from "@/lib/account-money";
 import {
+  ACCOUNT_STALE,
   ACCOUNT_TEXT,
   ACCOUNT_TYPES,
   informalDebtDetails,
@@ -75,14 +76,19 @@ export async function changeAccountAction(
     ? await closeAccount(scope.target, accountId, etag, closeKey)
     : await updateAccount(scope.target, accountId, etag, draft);
   if (result.kind === "unauthenticated") redirect("/sign-in");
+  const path = `/accounts/${accountId}`;
   if (result.kind === "failed") {
-    if (result.status === 412)
-      return "La cuenta cambió. Recarga la página antes de volver a intentarlo.";
+    if (result.status === 412) {
+      // A native POST renders a fresh version, replacing the form's action state.
+      if (singleText(form, "nativePost") === "yes")
+        redirect(`${path}?conflicto=${closeKey ? "cierre" : "edicion"}`);
+      return ACCOUNT_STALE;
+    }
     if (result.status === 409 && closeKey)
       return "No pudimos cerrar la cuenta. Revisa su estado y los movimientos pendientes.";
     return "No pudimos guardar el cambio. Vuelve a intentarlo.";
   }
-  redirect(`/accounts/${accountId}`);
+  redirect(path);
 }
 
 export async function createAccountAction(

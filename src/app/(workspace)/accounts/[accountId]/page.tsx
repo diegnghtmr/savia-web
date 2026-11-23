@@ -21,8 +21,10 @@ export const metadata = { title: "Detalle de cuenta" };
 
 export default async function AccountPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ accountId: string }>;
+  searchParams?: Promise<{ conflicto?: string | string[] }>;
 }) {
   const profile = await requireProfile();
   if (profile.kind === "failed")
@@ -47,6 +49,7 @@ export default async function AccountPage({
   if (result.kind === "unauthenticated") redirect("/sign-in");
   const workspaceId = scope.target.workspaceId;
   const submission = { workspaceId, accountId, etag };
+  const { conflicto } = (await searchParams) ?? {};
   const formKey = `${workspaceId}:${accountId}:${etag}`;
   const balance = result.kind === "ok" ? result.value : null;
   const fx = balance?.equivalent;
@@ -118,6 +121,7 @@ export default async function AccountPage({
             key={formKey}
             submission={submission}
             account={account}
+            stale={conflicto === "edicion"}
           />
           <h2>Cerrar cuenta</h2>
           <p>Cerrar la cuenta no elimina sus movimientos.</p>
@@ -125,6 +129,7 @@ export default async function AccountPage({
             key={`close:${formKey}`}
             submission={{ ...submission, closeKey: randomUUID() }}
             account={account}
+            stale={conflicto === "cierre"}
           />
         </>
       )}

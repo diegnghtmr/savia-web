@@ -2,10 +2,12 @@
 
 import { useActionState, useState } from "react";
 import {
+  ACCOUNT_STALE,
   ACCOUNT_STATUSES,
   ACCOUNT_TEXT,
   type AccountEdit,
 } from "@/lib/account-types";
+import { useHydrated } from "@/lib/use-hydrated";
 import { changeAccountAction } from "../_actions/accounts";
 
 type Submission = Parameters<typeof changeAccountAction>[0];
@@ -13,10 +15,13 @@ type Submission = Parameters<typeof changeAccountAction>[0];
 export function AccountChangeForm({
   submission,
   account,
+  stale,
 }: {
   submission: Submission;
   account: AccountEdit;
+  stale?: boolean;
 }) {
+  const hydrated = useHydrated();
   const [bound] = useState(submission);
   const [draft, setDraft] = useState(account);
   const [error, submit, pending] = useActionState(
@@ -24,6 +29,7 @@ export function AccountChangeForm({
     null,
   );
   const closing = !!bound.closeKey;
+  const outcome = error ?? (stale ? ACCOUNT_STALE : null);
   const field = (name: keyof AccountEdit) => ({
     id: `edit-${name}`,
     name,
@@ -37,11 +43,13 @@ export function AccountChangeForm({
   return (
     <form
       action={submit}
+      data-enhanced={hydrated || undefined}
       aria-label={closing ? "Cerrar cuenta" : "Editar cuenta"}
     >
-      {error && (
+      <input type="hidden" name="nativePost" value={hydrated ? "no" : "yes"} />
+      {outcome && (
         <p className="outcome outcome-error" role="alert">
-          {error}
+          {outcome}
         </p>
       )}
       {closing ? (

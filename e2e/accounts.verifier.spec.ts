@@ -15,6 +15,8 @@ test("rejects stale account edits and closures after another tab saves", async (
   const path = (await link.getAttribute("href"))!;
   const stale = await context.newPage();
   await stale.goto(path);
+  const staleEdit = stale.getByRole("form", { name: "Editar cuenta" });
+  await expect(staleEdit).toHaveAttribute("data-enhanced", "true");
   await page.goto(path);
   await page.getByLabel("Nombre de la cuenta").fill("Guardado primero");
   await page.getByRole("button", { name: "Guardar cambios" }).click();
@@ -41,6 +43,38 @@ test("rejects stale account edits and closures after another tab saves", async (
   await expect(
     page.getByRole("button", { name: "Guardar cambios" }),
   ).toBeVisible();
+});
+
+test.describe("native account forms", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("keeps the stale edit error when newer data renders", async ({
+    page,
+    context,
+  }) => {
+    await signInAs(page, ONBOARDED_USER.email, ONBOARDED_USER.password);
+    await page.goto("/accounts");
+    const link = page.getByRole("link", { name: "Caja", exact: true });
+    const path = (await link.getAttribute("href"))!;
+    const stale = await context.newPage();
+    await stale.goto(path);
+    await page.goto(path);
+    await page.getByLabel("Nombre de la cuenta").fill("Caja actualizada");
+    await page.getByRole("button", { name: "Guardar cambios" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Caja actualizada" }),
+    ).toBeVisible();
+    const edit = stale.getByRole("form", { name: "Editar cuenta" });
+    await edit.getByLabel("Nombre de la cuenta").fill("Caja obsoleta");
+    await edit.getByRole("button", { name: "Guardar cambios" }).click();
+    await expect(edit.getByRole("alert")).toHaveText(
+      "La cuenta cambió. Recarga la página antes de volver a intentarlo.",
+    );
+    await stale.reload();
+    await expect(
+      stale.getByRole("heading", { name: "Caja actualizada" }),
+    ).toBeVisible();
+  });
 });
 
 test("a stale account form cannot write after a different tab switches workspace", async ({
