@@ -9,6 +9,7 @@ import {
   uploadMessages,
   type UploadKind,
 } from "@/lib/data-upload";
+import { useHydrated } from "@/lib/use-hydrated";
 import { DraftReceipt } from "./draft-receipt";
 import { DraftSubmit } from "./draft-submit";
 
@@ -25,6 +26,7 @@ export function DataForm({
   resultLabel: string;
   upload?: UploadKind;
 }) {
+  const ready = useHydrated();
   const [error, setError] = useState("");
   const [state, submit, pending] = useDraftAction(
     "data",
@@ -53,7 +55,7 @@ export function DataForm({
         } else setError("");
       }}
     >
-      <fieldset disabled={pending}>
+      <fieldset disabled={pending || !ready}>
         {children}
         {(error || state?.error) && <p role="alert">{error || state?.error}</p>}
         {state?.href && <a href={state.href}>Revisar estado actual</a>}

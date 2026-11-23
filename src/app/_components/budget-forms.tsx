@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { unavailableDraft, useDraftAction } from "@/lib/draft-client";
+import { useHydrated } from "@/lib/use-hydrated";
 import {
   saveAllocations,
   saveBudget,
@@ -33,6 +34,7 @@ function BudgetForm({
   label: string;
   children: ReactNode;
 }) {
+  const ready = useHydrated();
   const [state, submit, pending] = useDraftAction(kind, bound, action, {
     error: unavailableDraft,
   });
@@ -57,7 +59,7 @@ function BudgetForm({
           {state.error}
         </p>
       )}
-      <fieldset disabled={pending}>
+      <fieldset disabled={pending || !ready}>
         {children}
         <DraftSubmit
           label={pending ? "Guardando…" : label}

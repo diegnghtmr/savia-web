@@ -23,15 +23,9 @@ test("a stopped browser before receipt acknowledgment cannot duplicate the creat
 }) => {
   await signInAs(page, ONBOARDED_USER.email, ONBOARDED_USER.password);
   await fillDraft(page);
-  const seed = (await context.cookies()).find(
-    ({ name }) => name === "savia-draft-seed",
-  );
-  expect(seed).toMatchObject({
-    httpOnly: true,
-    secure: true,
-    sameSite: "Lax",
-    path: "/",
-  });
+  const seed = async () =>
+    (await context.cookies()).find(({ name }) => name === "savia-draft-seed");
+  expect(await seed()).toBeUndefined();
 
   const ack = Promise.withResolvers<void>();
   await page.route(/\/transactions\/[0-9a-f-]{36}$/, async (route) => {
@@ -45,6 +39,13 @@ test("a stopped browser before receipt acknowledgment cannot duplicate the creat
   const original = page.url();
   await ack.promise;
 
+  // Admission now happens in verified preflight, not when the form mounts.
+  expect(await seed()).toMatchObject({
+    httpOnly: true,
+    secure: true,
+    sameSite: "Lax",
+    path: "/",
+  });
   expect(await page.evaluate(() => document.cookie)).not.toContain(
     "savia-draft-",
   );

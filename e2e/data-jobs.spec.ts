@@ -6,7 +6,9 @@ import { test } from "./fixtures/browser";
 test("reviews and commits a statement", async ({ page }) => {
   await signInAs(page, ONBOARDED_USER.email, ONBOARDED_USER.password);
   await page.goto("/imports");
-  await page.getByLabel("Archivo").setInputFiles({
+  const file = page.getByLabel("Archivo");
+  await expect(file).toBeEnabled();
+  await file.setInputFiles({
     name: "statement.csv",
     mimeType: "text/csv",
     buffer: Buffer.from("date,amount,description\n2026-01-01,-12345,Lunch"),
@@ -34,7 +36,9 @@ test("reviews and commits a statement", async ({ page }) => {
 test("polls OCR and opens the linked transaction", async ({ page }) => {
   await signInAs(page, ONBOARDED_USER.email, ONBOARDED_USER.password);
   await page.goto("/receipts");
-  await page.getByLabel("Archivo").setInputFiles({
+  const file = page.getByLabel("Archivo");
+  await expect(file).toBeEnabled();
+  await file.setInputFiles({
     name: "receipt.pdf",
     mimeType: "application/pdf",
     buffer: Buffer.from("%PDF-1.4\nloopback OCR fixture"),

@@ -1,5 +1,7 @@
 "use client";
 
+import { useHydrated } from "@/lib/use-hydrated";
+
 export function DraftSubmit({
   label,
   pending,
@@ -9,9 +11,11 @@ export function DraftSubmit({
   pending: boolean;
   confirmation?: string;
 }) {
+  const ready = useHydrated();
+  const disabled = pending || !ready;
   return (
     <>
-      <button className="submit" type="submit" disabled={pending}>
+      <button className="submit" type="submit" disabled={disabled}>
         {label}
       </button>
       {confirmation && (
@@ -20,7 +24,7 @@ export function DraftSubmit({
           type="submit"
           name="confirmDraft"
           value={confirmation}
-          disabled={pending}
+          disabled={disabled}
         >
           Registrar de todos modos
         </button>
