@@ -20,5 +20,9 @@ export const config = {
     "/imports/:path*",
     "/receipts/:path*",
     "/reports/:path*",
+    "/assistant",
+    "/approvals/:path*",
+    "/ai-credentials",
+    "/notifications",
   ],
 };

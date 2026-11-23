@@ -71,6 +71,20 @@ export default async function OverviewPage({
       <p className="eyebrow">Vista general</p>
       <h1 style={{ overflowWrap: "anywhere" }}>{active.name}</h1>
       <WorkspaceSelector key={active.id} items={items} active={active.id} />
+      <section aria-labelledby="overview-tools">
+        <h2 id="overview-tools">Asistente y preferencias</h2>
+        <ul>
+          <li>
+            <a href="/assistant">Asistente</a>
+          </li>
+          <li>
+            <a href="/ai-credentials">Claves de IA</a>
+          </li>
+          <li>
+            <a href="/notifications">Notificaciones</a>
+          </li>
+        </ul>
+      </section>
       <InsightsPeriodForm period={period} />
       <Suspense fallback={<p role="status">Cargando resumen financiero…</p>}>
         <FinancialSummary report={summary} />

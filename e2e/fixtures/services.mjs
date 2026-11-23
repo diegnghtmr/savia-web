@@ -12,6 +12,7 @@ import { handleFunds } from "./funds.mjs";
 import { handleDebts } from "./debts.mjs";
 import { handleScenarios } from "./scenarios.mjs";
 import { handleDataJobs } from "./data-jobs.mjs";
+import { handleCapabilities } from "./capabilities.mjs";
 
 // This server is test-only and accepts only credentials and sessions it issues.
 const accounts = [
@@ -108,6 +109,7 @@ async function handle(request, reply) {
         debts: new Map(),
         scenarios: new Map(),
         dataJobs: new Map(),
+        capabilities: new Map(),
       });
       return json(200, {
         user,
@@ -415,6 +417,20 @@ async function handle(request, reply) {
                 accountsFor(session, space, new Date().toISOString()),
             })
           : json(403, {});
+      }
+      if (/^\/v1\/(?:approvals|ai)(?:\/|$)/.test(url.pathname)) {
+        if (!session) return unauthorized();
+        const space = session.workspaces.find(
+          ({ id }) => id === request.headers["x-workspace-id"],
+        );
+        return handleCapabilities({
+          request,
+          url,
+          json,
+          session,
+          space,
+          readJson,
+        });
       }
       return json(404, { message: "Unsupported fixture route" });
   }

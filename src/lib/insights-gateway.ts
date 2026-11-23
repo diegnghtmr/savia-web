@@ -13,7 +13,21 @@ type Workspace = NonNullable<
   >["active"]
 >;
 
-export function insightsTransport(token: string, workspace: Workspace) {
+type InsightsRequest = (
+  route: string,
+  query?: URLSearchParams,
+  init?: RequestInit,
+) => Promise<Response | null>;
+
+export function insightsTransport(token: string): InsightsRequest;
+export function insightsTransport(
+  token: string,
+  workspace: Workspace,
+): InsightsRequest;
+export function insightsTransport(
+  token: string,
+  workspace?: Workspace,
+): InsightsRequest {
   return async (route: string, query?: URLSearchParams, init?: RequestInit) => {
     let response: Response;
     try {
@@ -25,10 +39,10 @@ export function insightsTransport(token: string, workspace: Workspace) {
         cache: "no-store",
         redirect: "manual",
         headers: {
+          accept: "application/json",
           ...init?.headers,
           authorization: `Bearer ${token}`,
-          accept: "application/json",
-          "x-workspace-id": workspace.id,
+          ...(workspace && { "x-workspace-id": workspace.id }),
         },
       });
     } catch {
