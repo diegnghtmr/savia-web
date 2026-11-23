@@ -1,5 +1,6 @@
 import "server-only";
 
+import { strongETag } from "./etag";
 import { amount, ledgerScope, parsePage } from "./transactions-gateway";
 import { calendarDate, viewFilters, type SearchParams } from "./view-filters";
 import { WORKSPACE_ID } from "./workspace-gateway";
@@ -60,6 +61,10 @@ function fund(value: unknown) {
     targetAmount,
     currentAmount,
     recommendedMonthlyContribution,
+    objective,
+    linkedAccountId,
+    responsibleMemberIds,
+    etag,
   } = value as Record<string, unknown>;
   const target = amount(targetAmount),
     saved = amount(currentAmount),
@@ -87,6 +92,14 @@ function fund(value: unknown) {
     target,
     saved,
     recommended: recommended?.currency === currency ? recommended : null,
+    objective: typeof objective === "string" ? objective : undefined,
+    linkedAccountId: fundId(linkedAccountId)
+      ? linkedAccountId.toLowerCase()
+      : undefined,
+    responsibleMemberIds: Array.isArray(responsibleMemberIds)
+      ? responsibleMemberIds.filter(fundId).map((id) => id.toLowerCase())
+      : undefined,
+    etag: strongETag(etag) ? etag : undefined,
   };
 }
 export type Fund = NonNullable<ReturnType<typeof fund>>;
@@ -107,12 +120,30 @@ export async function fundScope(token: string) {
       ? page
       : null;
   };
+  const detail = (id: string, distinguishUpstreamFailure = false) =>
+    scanWorkspacePages(id, list, () =>
+      distinguishUpstreamFailure ? ("service-error" as const) : null,
+    );
   return {
     ...scope,
     list,
-    detail: (id: string, distinguishUpstreamFailure = false) =>
-      scanWorkspacePages(id, list, () =>
-        distinguishUpstreamFailure ? ("service-error" as const) : null,
-      ),
+    detail,
+    async get(id: string) {
+      const response = await scope.request(`funds/${id}`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (response?.status === 404) return "not-found" as const;
+      if (response?.status === 405 || response?.status === 501) {
+        const legacy = await detail(id, true);
+        return typeof legacy === "object" && legacy
+          ? { ...legacy, etag: undefined }
+          : legacy;
+      }
+      if (response?.status !== 200) return "service-error" as const;
+      const row = fund(await response.json().catch(() => null));
+      if (row?.id !== id) return "service-error" as const;
+      const header = response.headers.get("etag");
+      return { ...row, etag: row.etag === header ? row.etag : undefined };
+    },
   };
 }

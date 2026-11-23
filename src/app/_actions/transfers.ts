@@ -48,7 +48,8 @@ export async function recordTransfer(
   )
     return invalid;
   const amount = positiveMoney(input.amount, from);
-  if (!amount || (input.fee && !positiveMoney(input.fee, from))) return invalid;
+  const fee = input.fee ? positiveMoney(input.fee, from) : undefined;
+  if (!amount || fee === null) return invalid;
   const base = {
     sourceAccountId,
     destinationAccountId,
@@ -65,7 +66,7 @@ export async function recordTransfer(
     return submitFinancialDraft(
       bound.workspaceId,
       "transfers",
-      { ...base, amount },
+      { ...base, amount, ...(fee && { fee }) },
       errors,
       form,
     );

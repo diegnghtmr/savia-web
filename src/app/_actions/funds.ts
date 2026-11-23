@@ -1,6 +1,6 @@
 "use server";
 
-import { decimalToMinor } from "@/lib/account-money";
+import { positiveMoney } from "@/lib/account-money";
 import {
   fields,
   submitFinancialDraft,
@@ -17,14 +17,6 @@ export type FundBinding = {
     accounts: Record<string, string>;
   };
 };
-
-function positiveMoney(value: string, currency: string) {
-  if (!/^[A-Z]{3}$/.test(currency)) return null;
-  const amountMinor = decimalToMinor(value, currency);
-  return amountMinor && amountMinor !== "0" && !amountMinor.startsWith("-")
-    ? { amountMinor, currency }
-    : null;
-}
 
 export async function saveFund(
   bound: FundBinding,

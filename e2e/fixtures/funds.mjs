@@ -32,6 +32,12 @@ export async function handleFunds({
     );
   }
   const rows = session.funds.get(space.id);
+  const detailId = url.pathname.split("/")[3];
+  if (request.method === "GET" && detailId) {
+    const fund = rows.find((row) => row.id === detailId);
+    const etag = '"1"';
+    return fund ? json(200, { ...fund, etag }, { etag }) : json(404, {});
+  }
   if (request.method === "POST") {
     const key = request.headers["idempotency-key"];
     if (!/^[a-f0-9-]{36}$/.test(key) || request.headers["if-match"])

@@ -26,14 +26,21 @@ test("records same-currency and cross-currency transfers", async ({ page }) => {
     await page.getByLabel("Cuenta de destino").selectOption({ label: name });
     await page.getByLabel("Importe de origen").fill("50000,00");
     await page.getByLabel("Fecha (UTC)").fill("2026-11-20");
-    await expect(page.getByLabel("Comisión")).toBeDisabled({ timeout: 3000 });
-    await expect(
-      page.getByText("La comisión aún no se descuenta del saldo."),
-    ).toBeVisible();
+    const fee = page.getByLabel("Comisión");
     if (cross) {
+      await expect(fee).toBeDisabled({ timeout: 3000 });
+      await expect(
+        page.getByText(
+          "Disponible solo para transferencias en la misma moneda.",
+        ),
+      ).toBeVisible();
       await page.getByLabel("Importe recibido").fill("12.50");
       await page.getByLabel("Tasa ejecutada").fill("0.00025");
-    } else await expect(page.getByLabel("Importe recibido")).toHaveCount(0);
+    } else {
+      await expect(fee).toBeEnabled({ timeout: 3000 });
+      await fee.fill("0,02");
+      await expect(page.getByLabel("Importe recibido")).toHaveCount(0);
+    }
     await page.getByRole("button", { name: "Registrar transferencia" }).click();
     await expect(page.getByText("Transferencia registrada.")).toBeVisible();
   }

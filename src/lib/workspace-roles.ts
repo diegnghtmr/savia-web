@@ -14,6 +14,10 @@ export function canManageMembers(role: WorkspaceRole | undefined) {
   return role === "owner" || role === "administrator";
 }
 
+export function canWriteWorkspace(role: WorkspaceRole | undefined) {
+  return canManageMembers(role) || role === "editor";
+}
+
 export const roleNames: Record<WorkspaceRole, string> = {
   owner: "Propietario",
   administrator: "Administrador",

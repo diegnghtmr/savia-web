@@ -1,5 +1,8 @@
 import { use, type ReactNode } from "react";
+import { saveCapability } from "@/app/_actions/capabilities";
+import { CapabilityForm } from "@/app/_components/capability-form";
 import { money } from "@/lib/account-money";
+import type { InsightsPeriod } from "@/lib/insights-period";
 import type { readDetected, readUpcoming } from "@/lib/overview-recurring";
 
 function Preview<T extends { id: string; name: string }>({
@@ -64,10 +67,17 @@ export function UpcomingPreview({
   );
 }
 
+const subscriptionDecisions = [
+  ["subscription-confirm", "Confirmar suscripción"],
+  ["subscription-discard", "Descartar suscripción"],
+] as const;
+
 export function DetectedPreview({
   report,
+  editor,
 }: {
   report: ReturnType<typeof readDetected>;
+  editor?: { userId: string; workspaceId: string; period: InsightsPeriod };
 }) {
   return (
     <Preview
@@ -76,11 +86,29 @@ export function DetectedPreview({
       page={use(report)}
       empty="No hay suscripciones detectadas."
       failure="No pudimos cargar las suscripciones detectadas."
-      detail={({ current }) => (
-        <span>
-          {current ? money(current) : "Importe en moneda base no disponible"}
-        </span>
-      )}
+      detail={({ id, name, current, version, canDecide }) => {
+        const unknown = "Importe en moneda base no disponible";
+        const total = current ? money(current) : unknown;
+        return (
+          <>
+            <span>{total}</span>
+            {editor && canDecide && (
+              <div role="group" aria-label={`Decidir sobre ${name}`}>
+                {subscriptionDecisions.map(([kind, label]) => {
+                  const bound = { ...editor, id, version, kind };
+                  return (
+                    <CapabilityForm
+                      key={kind}
+                      label={label}
+                      action={saveCapability.bind(null, bound)}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </>
+        );
+      }}
     />
   );
 }

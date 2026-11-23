@@ -66,7 +66,7 @@ it("rejects ambiguous drafts, same-account moves and invalid FX before I/O", asy
   expect(fetchImpl).not.toHaveBeenCalled();
 });
 
-it("posts exact amounts without fees and replays the normalized draft", async () => {
+it("posts the exact same-currency fee, omits a blank fee and preserves FX replay", async () => {
   const writes: { url: string; key: string | null; body: unknown }[] = [];
   fetchImpl.mockImplementation(async (url, init) => {
     if (String(url).endsWith("/me")) return Response.json({ id: src });
@@ -108,7 +108,10 @@ it("posts exact amounts without fees and replays the normalized draft", async ()
       draft({ ...exchange, executedRate: "0,02", destinationAmount: "17,005" }),
     ),
   ).toEqual({ receipt: cop });
-  expect(writes[0].body).not.toHaveProperty("fee");
+  expect(writes[0].body).toHaveProperty("fee", {
+    amountMinor: "2",
+    currency: "COP",
+  });
   expect(writes[1].body).not.toHaveProperty("fee");
   const sourceAmount = { amountMinor: "900719925474099301", currency: "COP" };
   expect(writes[0]).toMatchObject({
@@ -132,4 +135,12 @@ it("posts exact amounts without fees and replays the normalized draft", async ()
   });
   expect(writes[2]).toEqual(writes[1]);
   expect(writes[1].key).not.toBe(writes[0].key);
+  expect(await recordTransfer(bound, null, draft({ fee: "0,020" }))).toEqual({
+    error: "Revisa los datos de la transferencia.",
+  });
+  expect(await recordTransfer(bound, null, draft({ fee: "" }))).toEqual({
+    receipt: cop,
+  });
+  expect(writes[3].body).not.toHaveProperty("fee");
+  expect(writes[3].key).not.toBe(writes[0].key);
 });

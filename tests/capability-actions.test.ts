@@ -79,6 +79,117 @@ async function reserve(bound: ReturnType<typeof bind>, form: FormData) {
   form.set("draftPrepared", result.prepared!);
 }
 
+it.each(["confirm", "discard"])(
+  "posts a version-bound subscription %s without a transaction body",
+  async (decision) => {
+    const bound = bind(`subscription-${decision}`, { id, version: '"7"' });
+    const form = input();
+    await reserve(bound, form);
+    respond = () => Response.json({ id }, { status: 200 });
+    await expect(saveCapability(bound, null, form)).rejects.toThrow(
+      /^redirect:\/overview\?guardado=[\da-f-]{36}$/,
+    );
+    expect(send).toHaveBeenCalledOnce();
+    const [path, request] = send.mock.calls[0];
+    expect(path).toBe(`/v1/subscriptions/${id}/${decision}`);
+    expect(request.method).toBe("POST");
+    expect(request.body).toBeUndefined();
+    const headers = new Headers(request.headers);
+    expect(headers.get("if-match")).toBe('"7"');
+    expect(headers.get("x-workspace-id")).toBe(workspaceId);
+    expect(headers.get("idempotency-key")).toMatch(/^[\da-f-]{36}$/);
+  },
+);
+
+it("sends exact fund metadata with its displayed ETag", async () => {
+  const bound = bind("fund-edit", { id, currency: "COP", version: '"7"' });
+  const form = input({
+    name: "  Reparaciones  ",
+    objective: "",
+    amount: "9007199254740993,01",
+    targetDate: "2027-06-01",
+    linkedAccountId: "",
+  });
+  await reserve(bound, form);
+  respond = () => Response.json({ id, etag: '"8"' }, { status: 200 });
+  await expect(saveCapability(bound, null, form)).rejects.toThrow(
+    /^redirect:\/funds\/[^?]+\?guardado=[\da-f-]{36}$/,
+  );
+  expect(send).toHaveBeenCalledOnce();
+  const [path, request] = send.mock.calls[0];
+  expect(path).toBe(`/v1/funds/${id}`);
+  expect(request.method).toBe("PATCH");
+  expect(JSON.parse(String(request.body))).toEqual({
+    name: "Reparaciones",
+    objective: null,
+    targetAmount: { amountMinor: "900719925474099301", currency: "COP" },
+    targetDate: "2027-06-01",
+    linkedAccountId: null,
+  });
+  const headers = new Headers(request.headers);
+  expect(headers.get("if-match")).toBe('"7"');
+  expect(headers.get("idempotency-key")).toMatch(/^[\da-f-]{36}$/);
+});
+
+it.each([409, 422, 201])(
+  "handles a fund withdrawal response %s",
+  async (status) => {
+    const bound = bind("fund-withdraw", { id, currency: "COP" });
+    const form = input({
+      accountId: userId,
+      amount: "25,00",
+      reason: "  Arreglo ",
+    });
+    await reserve(bound, form);
+    respond = () =>
+      Response.json({ id, code: "insufficient-fund-balance" }, { status });
+    const result = saveCapability(bound, null, form);
+    const saved = /^redirect:\/funds\/[^?]+\?guardado=/;
+    const conflict =
+      "El retiro supera el saldo guardado o entra en conflicto con otro movimiento.";
+    const insufficient =
+      "El saldo guardado del fondo no es suficiente para este retiro.";
+    if (status === 201) await expect(result).rejects.toThrow(saved);
+    else {
+      const error = status === 409 ? conflict : insufficient;
+      await expect(result).resolves.toEqual({ error });
+    }
+    expect(send).toHaveBeenCalledOnce();
+    const [path, request] = send.mock.calls[0];
+    expect(path).toBe(`/v1/funds/${id}/withdrawals`);
+    expect(request.method).toBe("POST");
+    expect(JSON.parse(String(request.body))).toEqual({
+      accountId: userId,
+      amount: { amountMinor: "2500", currency: "COP" },
+      reason: "Arreglo",
+    });
+    const headers = new Headers(request.headers);
+    expect(headers.has("if-match")).toBe(false);
+    expect(headers.get("idempotency-key")).toMatch(/^[\da-f-]{36}$/);
+  },
+);
+
+it("rejects invalid W18 mutations before session or draft writes", async () => {
+  const initial = new Map(jar);
+  for (const [bound, form] of [
+    [
+      bind("fund-edit", { id, currency: "COP", version: 'W/"7"' }),
+      input({ name: "Fondo" }),
+    ],
+    [
+      bind("fund-withdraw", { id, currency: "COP" }),
+      input({ accountId: userId, amount: "1", reason: " " }),
+    ],
+    [bind("subscription-confirm", { id, version: "*" }), input()],
+  ] as const)
+    expect(await saveCapability(bound, null, form)).toEqual({
+      error: "Revisa los datos del formulario.",
+    });
+  expect(requireSession).not.toHaveBeenCalled();
+  expect(send).not.toHaveBeenCalled();
+  expect(jar).toEqual(initial);
+});
+
 it("validates CLI codes before session and rejects a changed profile", async () => {
   const original = new Map(jar);
   const duplicate = input({ userCode: "ABCD-EFGH" });

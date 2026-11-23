@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import List from "@/app/(workspace)/funds/page";
 import Contribute from "@/app/(workspace)/funds/[fundId]/contribute/page";
 import Detail from "@/app/(workspace)/funds/[fundId]/page";
@@ -46,6 +46,8 @@ beforeEach(() => {
         items: [{ id: workspace, name: "Casa" }],
         pageInfo: { hasNextPage: false },
       });
+    if (url.pathname === `/v1/funds/${id}`)
+      return new Response(null, { status: 501 });
     expect(url.pathname).toBe("/v1/funds");
     expect(new Headers(init?.headers).get("x-workspace-id")).toBe(workspace);
     return url.searchParams.has("cursor")
@@ -111,9 +113,44 @@ it("rejects malformed detail IDs before session and resolves normalized IDs acro
     "50,00 %",
   ])
     expect(screen.getByText(value, { exact: false })).toBeVisible();
-  expect(fetchImpl.mock.calls[3][0]).toBe(
+  expect(fetchImpl.mock.calls[4][0]).toBe(
     `https://backend.test/v1/funds?limit=200&cursor=${cursor(workspace)}`,
   );
+});
+
+it("renders direct fund detail with a strong ETag and writer controls", async () => {
+  const base = fetchImpl.getMockImplementation()!;
+  fetchImpl.mockImplementation((input, init) => {
+    const { pathname } = new URL(String(input));
+    const pageInfo = { hasNextPage: false };
+    if (pathname === "/v1/workspaces")
+      return Promise.resolve(
+        Response.json({
+          items: [{ id: workspace, name: "Casa", role: "editor" }],
+          pageInfo,
+        }),
+      );
+    if (pathname === `/v1/funds/${id}`)
+      return Promise.resolve(
+        Response.json({ ...fund, etag: '"7"' }, { headers: { etag: '"7"' } }),
+      );
+    if (pathname === "/v1/accounts") {
+      const destination = {
+        id: other,
+        name: "Destino",
+        currency: "COP",
+        status: "archived",
+      };
+      return Promise.resolve(Response.json({ items: [destination], pageInfo }));
+    }
+    return base(input, init);
+  });
+  render(await Detail({ params: Promise.resolve({ fundId: id }) }));
+  expect(screen.getByRole("form", { name: "Editar fondo" })).toBeVisible();
+  const withdraw = screen.getByRole("form", { name: "Retirar del fondo" });
+  expect(withdraw).toBeVisible();
+  const destination = within(withdraw).getByRole("option", { name: "Destino" });
+  expect(destination).toBeVisible();
 });
 
 it("aborts a stalled page at the overall deadline and renders the bounded search fallback", async () => {
@@ -139,7 +176,7 @@ it("aborts a stalled page at the overall deadline and renders the bounded search
     expect(screen.getByRole("alert")).toHaveTextContent(
       "No pudimos encontrar el fondo",
     );
-    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
   } finally {
     pending.resolve(new Response(null, { status: 503 }));
     vi.useRealTimers();

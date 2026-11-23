@@ -2,7 +2,10 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import { dataId } from "./data-access";
+import { strongETag } from "./etag";
 import { fields } from "./financial-draft";
+import { editFundDraft, withdrawFundDraft } from "./fund-mutation";
+import { insightsPeriod, type InsightsPeriod } from "./insights-period";
 import { grantDraft } from "./mcp-grants";
 import { workspaceRole, type WorkspaceRole } from "./workspace-roles";
 
@@ -13,6 +16,8 @@ export type CapabilityBinding = {
   id?: string;
   argumentsHash?: string;
   version?: string;
+  currency?: string;
+  period?: InsightsPeriod;
 };
 
 type Command = {
@@ -69,6 +74,29 @@ export function capabilityCommand(
   const id = dataId(bound.id);
   const { kind, argumentsHash, version } = bound;
   switch (kind) {
+    case "fund-edit":
+    case "fund-withdraw": {
+      const { currency } = bound;
+      if (!id || typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency))
+        return null;
+      if (kind === "fund-edit") {
+        if (!strongETag(version)) return null;
+        const body = editFundDraft(form, currency);
+        const route = `funds/${id}`;
+        return body && { route, method: "PATCH", status: 200, version, body };
+      }
+      const body = withdrawFundDraft(form, currency);
+      return body && { route: `funds/${id}/withdrawals`, status: 201, body };
+    }
+    case "subscription-confirm":
+    case "subscription-discard": {
+      const decision = kind === "subscription-confirm" ? "confirm" : "discard";
+      return id &&
+        (version === undefined || strongETag(version)) &&
+        (bound.period === undefined || insightsPeriod(bound.period))
+        ? { route: `subscriptions/${id}/${decision}`, status: 200, version }
+        : null;
+    }
     case "conversation": {
       const data = fields(form, ["title"]);
       if (!data || [...data.title].length > 120) return null;

@@ -21,6 +21,7 @@ const fetchImpl = vi.fn<typeof fetch>();
 let respond: () => Response;
 let recurring: () => Response;
 let subscriptions: () => Response;
+let role: string | undefined;
 const list = (items: unknown[], nextCursor?: string) =>
   Response.json({ items, pageInfo: { hasNextPage: !!nextCursor, nextCursor } });
 
@@ -34,6 +35,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   respond = () => Response.json(summary);
   recurring = subscriptions = () => list([]);
+  role = undefined;
   vi.stubGlobal("fetch", fetchImpl);
   vi.stubEnv("BACKEND_BASE_URL", "http://127.0.0.1:4010");
   vi.stubEnv("SUPABASE_URL", "http://127.0.0.1:4010");
@@ -42,7 +44,7 @@ beforeEach(() => {
     const url = new URL(String(input));
     if (url.pathname === "/v1/me") return Response.json({ id });
     if (url.pathname === "/v1/workspaces")
-      return list([{ id, name: "Casa", baseCurrency: "COP" }]);
+      return list([{ id, name: "Casa", baseCurrency: "COP", role }]);
     expect(new Headers(init?.headers).get("x-workspace-id")).toBe(id);
     expect(init?.method ?? "GET").toBe("GET");
     if (url.pathname === "/v1/recurring-rules") {
@@ -113,7 +115,24 @@ it.each([503, 200])(
   },
 );
 
-it("shows next active rule dates and detected subscriptions without unsupported actions or foreign money", async () => {
+it("offers confirm and discard to a verified writer", async () => {
+  role = "editor";
+  subscriptions = () =>
+    list([
+      {
+        id,
+        payeeName: "Música",
+        status: "detected",
+        currentAmount: cop("12345"),
+        etag: '"7"',
+      },
+    ]);
+  await renderPeriod();
+  for (const name of ["Confirmar suscripción", "Descartar suscripción"])
+    expect(screen.getByRole("button", { name })).toBeVisible();
+});
+
+it("shows next active rule dates and detected subscriptions without actions for an unverified role or foreign money", async () => {
   recurring = () =>
     list([
       {

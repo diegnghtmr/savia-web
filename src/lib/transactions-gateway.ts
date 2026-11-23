@@ -172,7 +172,11 @@ export async function ledgerScope(token: string) {
       : body;
   }
   const currencies: Record<string, string> = {};
-  async function catalog(route: string) {
+  async function catalog(
+    route: string,
+    includeArchived = false,
+    acceptedCurrencies = currencies,
+  ) {
     const query = new URLSearchParams({ limit: "200" });
     const names = new Map<string, string>();
     const seen = new Set<string>();
@@ -192,11 +196,11 @@ export async function ledgerScope(token: string) {
         names.set(id, name);
         if (
           route === "accounts" &&
-          status === "active" &&
+          (status === "active" || (includeArchived && status === "archived")) &&
           currency &&
           /^[A-Z]{3}$/.test(currency)
         )
-          currencies[id] = currency;
+          acceptedCurrencies[id] = currency;
       }
       if (!page.cursor) return names;
       if (seen.has(page.cursor)) return null;
@@ -206,6 +210,7 @@ export async function ledgerScope(token: string) {
   }
   return {
     name,
+    role: scope.active.role,
     serverTime: scope.active.serverTime,
     request,
     categories: () => catalog("categories"),
@@ -224,8 +229,9 @@ export async function ledgerScope(token: string) {
       return row?.id.toLowerCase() === canonical ? row : null;
     },
     async lookups() {
+      const resources = ["accounts", "categories", "payees", "tags"];
       const [accounts, categories, payees, tags] = await Promise.all(
-        ["accounts", "categories", "payees", "tags"].map(catalog),
+        resources.map((route) => catalog(route)),
       );
       return accounts && categories && payees && tags
         ? { accounts, categories, payees, tags, currencies }
@@ -238,6 +244,11 @@ export async function ledgerScope(token: string) {
     async activeAccounts() {
       const names = await catalog("accounts");
       return names ? { currencies, names } : null;
+    },
+    async openAccounts() {
+      const openCurrencies: Record<string, string> = {};
+      const names = await catalog("accounts", true, openCurrencies);
+      return names ? { currencies: openCurrencies, names } : null;
     },
     async createFinancialRecord(
       route: FinancialRoute,

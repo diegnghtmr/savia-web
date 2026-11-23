@@ -1,5 +1,6 @@
 import "server-only";
 
+import { strongETag } from "./etag";
 import { insightsTransport, record } from "./insights-gateway";
 import { amount, parsePage } from "./transactions-gateway";
 import { WORKSPACE_ID } from "./workspace-gateway";
@@ -69,9 +70,12 @@ export async function readDetected(
     if (!candidate || candidate.body.status !== "detected") return null;
     const current = amount(candidate.body.currentAmount);
     if (!current) return null;
+    const tag = candidate.body.etag;
     return {
-      id: candidate.id,
+      id: candidate.id.toLowerCase(),
       name: candidate.name,
+      version: strongETag(tag) ? tag : undefined,
+      canDecide: tag === undefined || strongETag(tag),
       current: current.currency === workspace.baseCurrency ? current : null,
     };
   });

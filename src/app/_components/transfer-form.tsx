@@ -33,6 +33,7 @@ export function TransferForm({
   const from = submitted.currencies[value("sourceAccountId")];
   const to = submitted.currencies[value("destinationAccountId")];
   const cross = from && to && from !== to;
+  const canChargeFee = !!from && from === to;
   if (result?.receipt)
     return (
       <>
@@ -99,13 +100,15 @@ export function TransferForm({
             type={kind === "date" ? "date" : "text"}
             inputMode={kind === "decimal" ? "decimal" : undefined}
             required={required}
-            disabled={key === "fee"}
+            disabled={key === "fee" && !canChargeFee}
             aria-describedby={key === "fee" ? "transfer-fee-note" : undefined}
             maxLength={key === "description" ? 500 : undefined}
           />
           {key === "fee" && (
             <p id="transfer-fee-note" className="hint">
-              La comisión aún no se descuenta del saldo.
+              {canChargeFee
+                ? `Se descuenta de la cuenta de origen en ${from}.`
+                : "Disponible solo para transferencias en la misma moneda."}
             </p>
           )}
         </div>

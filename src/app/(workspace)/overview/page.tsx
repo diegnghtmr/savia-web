@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
+import { CapabilityReceipt } from "@/app/_components/capability-receipt";
 import { InsightsPeriodForm } from "@/app/_components/insights-period-form";
 import { WorkspaceRecovery } from "@/app/_components/workspace-recovery";
 import { WorkspaceSelector } from "@/app/_components/workspace-selector";
@@ -10,6 +11,7 @@ import { readDetected, readUpcoming } from "@/lib/overview-recurring";
 import { requireProfile } from "@/lib/require-profile";
 import type { SearchParams } from "@/lib/view-filters";
 import { readWorkspaceContext } from "@/lib/workspace-context";
+import { canWriteWorkspace } from "@/lib/workspace-roles";
 import { FinancialSummary } from "./financial-summary";
 import { DetectedPreview, UpcomingPreview } from "./recurring";
 
@@ -20,7 +22,8 @@ export const dynamic = "force-dynamic";
 export default async function OverviewPage({
   searchParams,
 }: { searchParams?: Promise<SearchParams> } = {}) {
-  const period = insightsPeriod((await searchParams) ?? {});
+  const { guardado, suscripcion, ...input } = (await searchParams) ?? {};
+  const period = insightsPeriod(input);
   if (!period) {
     return (
       <>
@@ -56,7 +59,11 @@ export default async function OverviewPage({
       </>
     );
   }
-  const { accessToken } = profile;
+  const { accessToken, userId } = profile;
+  const binding = { workspaceId: active.id, userId };
+  const editor = canWriteWorkspace(active.role)
+    ? { ...binding, period }
+    : undefined;
   const summary = withDeadline((signal) =>
     readSummary(accessToken, active, period, signal),
   );
@@ -102,7 +109,16 @@ export default async function OverviewPage({
         <UpcomingPreview report={upcoming} />
       </Suspense>
       <Suspense fallback={<p role="status">Cargando suscripciones…</p>}>
-        <DetectedPreview report={detected} />
+        {guardado && <CapabilityReceipt requested={guardado} {...binding} />}
+        {suscripcion === "resuelta" && (
+          <p role="alert">La suscripción ya no está pendiente.</p>
+        )}
+        {suscripcion === "actualizada" && (
+          <p role="alert">
+            La suscripción cambió. Revisa los datos actualizados.
+          </p>
+        )}
+        <DetectedPreview report={detected} editor={editor} />
       </Suspense>
     </>
   );

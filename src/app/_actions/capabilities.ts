@@ -13,7 +13,7 @@ import { prepareDraft } from "@/lib/draft-preparation";
 import { draftWarning } from "@/lib/draft-retry";
 import { insightsTransport } from "@/lib/insights-gateway";
 import { loadServerConfig } from "@/lib/server-config";
-import { canManageMembers } from "@/lib/workspace-roles";
+import { canManageMembers, canWriteWorkspace } from "@/lib/workspace-roles";
 
 // These writes may replace or remove the form in the updated server tree.
 const refreshOnSuccess = new Set([
@@ -22,6 +22,8 @@ const refreshOnSuccess = new Set([
   "grant-revoke",
   "member-role",
   "member-remove",
+  "fund-edit",
+  "fund-withdraw",
 ]);
 
 export type CapabilityState = {
@@ -50,6 +52,14 @@ export async function saveCapability(
   const sameWorkspace = access?.workspace.id === bound.workspaceId;
   if (!sameWorkspace || access.userId !== bound.userId) return { error: stale };
   const failed = { error: "No pudimos completar la solicitud." };
+  const fund = bound.kind.startsWith("fund-");
+  const subscription = bound.kind.startsWith("subscription-");
+  const overviewQuery = new URLSearchParams(
+    subscription ? bound.period : undefined,
+  );
+  const fundHref = `/funds/${dataId(bound.id)}`;
+  if ((fund || subscription) && !canWriteWorkspace(access.workspace.role))
+    return { error: "No tienes permiso para modificar este espacio." };
   const members = bound.kind.startsWith("member-");
   if (members) {
     const { role, kind } = access.workspace;
@@ -111,6 +121,29 @@ export async function saveCapability(
     const credentialConflict = status === 409 || status === 412;
     if (bound.kind === "credential-replace" && credentialConflict)
       redirect("/ai-credentials?actualizada=1");
+    if (fund && status === 412) redirect(`${fundHref}?actualizado=1`);
+    if (subscription && (status === 409 || status === 412)) {
+      const state = status === 409 ? "resuelta" : "actualizada";
+      overviewQuery.set("suscripcion", state);
+      redirect(`/overview?${overviewQuery}`);
+    }
+    if (bound.kind === "fund-withdraw") {
+      if (status === 409) {
+        const error =
+          "El retiro supera el saldo guardado o entra en conflicto con otro movimiento.";
+        return { error };
+      }
+      if (status === 422) {
+        const problem = await dataObject(response);
+        const code = "insufficient-fund-balance";
+        const type = `https://savia.app/problems/${code}`;
+        const insufficient = problem?.code === code || problem?.type === type;
+        const error = insufficient
+          ? "El saldo guardado del fondo no es suficiente para este retiro."
+          : "Revisa el importe y la cuenta de destino.";
+        return { error };
+      }
+    }
     if (response?.status === 412)
       return { error: "Los datos cambiaron. Recarga la página." };
     if (bound.kind === "grant-create" && response?.status === 403)
@@ -134,7 +167,12 @@ export async function saveCapability(
     const id = conversation ? dataId((await dataObject(response))?.id) : null;
     if (conversation && !id) return failed;
     key.receipt(key.key);
-    const href = id ? `/assistant?conversation=${id}` : doneHref(bound.kind);
+    if (subscription) {
+      overviewQuery.set("guardado", key.key);
+      redirect(`/overview?${overviewQuery}`);
+    }
+    const target = id ? `/assistant?conversation=${id}` : doneHref(bound.kind);
+    const href = fund ? fundHref : target;
     if (href && refreshOnSuccess.has(bound.kind))
       redirect(`${href}?guardado=${key.key}`);
     return { receipt: key.key, href, ...answer };

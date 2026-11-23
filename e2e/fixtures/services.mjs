@@ -394,7 +394,7 @@ async function handle(request, reply) {
           : json(403, {});
       }
       if (
-        /^(?:GET \/v1\/funds|POST \/v1\/funds(?:\/[^/]+\/contributions)?)$/.test(
+        /^(?:GET \/v1\/funds(?:\/[^/]+)?|POST \/v1\/funds(?:\/[^/]+\/contributions)?)$/.test(
           route,
         )
       ) {
