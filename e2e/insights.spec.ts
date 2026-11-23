@@ -49,7 +49,11 @@ test("compares income and expenses and reads category spending for the selected 
   await page.getByLabel("Desde").fill("2026-01-02");
   await page.getByLabel("Hasta").fill("2026-02-28");
   await page.getByRole("button", { name: "Aplicar período" }).click();
-  await expect(page).toHaveURL("/analytics?from=2026-01-02&to=2026-02-28");
+  // The L16 GET form serializes the default grouping and blank optional filters.
+  await expect(page).toHaveURL(
+    "/analytics?from=2026-01-02&to=2026-02-28&granularity=month" +
+      "&presentationCurrency=&accountIds=&categoryIds=&tagIds=&payeeIds=&memberIds=&metric=",
+  );
   await expect(
     page.getByRole("row", { name: /Alimentación.*COP 123,45/ }),
   ).toBeVisible();
@@ -61,8 +65,8 @@ test("compares income and expenses and reads category spending for the selected 
     page.getByText("Vigencia de las conversiones: desconocida"),
   ).toBeVisible();
   await page.goto("/analytics?from=2026-01-01&to=2026-02-30");
-  await expect(page.locator("main").getByRole("alert")).toContainText(
-    "Revisa el período.",
+  await expect(page.locator("main").getByRole("alert")).toHaveText(
+    "Revisa el período y los filtros.",
   );
 });
 

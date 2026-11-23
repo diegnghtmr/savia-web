@@ -1,4 +1,5 @@
 import { act, render, screen } from "@testing-library/react";
+import Analytics from "@/app/(workspace)/analytics/page";
 import Overview from "@/app/(workspace)/overview/page";
 import { requireSession } from "@/lib/session";
 import type { SearchParams } from "@/lib/view-filters";
@@ -47,6 +48,8 @@ beforeEach(() => {
       return list([{ id, name: "Casa", baseCurrency: "COP", role }]);
     expect(new Headers(init?.headers).get("x-workspace-id")).toBe(id);
     expect(init?.method ?? "GET").toBe("GET");
+    if (url.pathname === "/v1/me/dashboard-preferences")
+      return new Response(null, { status: 404 });
     if (url.pathname === "/v1/recurring-rules") {
       expect(url.search).toBe("?limit=200");
       return recurring();
@@ -95,7 +98,168 @@ it("renders verified base-currency money, net refunds and budget use without ass
   ])
     expect(screen.getByText(text)).toBeVisible();
   expect(screen.getByRole("heading", { name: "Casa" })).toBeVisible();
-  expect(fetchImpl).toHaveBeenCalledTimes(5);
+  expect(fetchImpl).toHaveBeenCalledTimes(6);
+});
+
+it("applies saved dashboard card order, visibility, custom dates, and currency", async () => {
+  const fixture = fetchImpl.getMockImplementation()!;
+  fetchImpl.mockImplementation(async (url, init) => {
+    const path = new URL(String(url));
+    if (path.pathname === "/v1/me/dashboard-preferences")
+      return Response.json(
+        {
+          version: 7,
+          presentationCurrency: "USD",
+          period: { preset: "custom", ...period },
+          cards: [
+            { id: "expenses", visible: true },
+            { id: "net_worth", visible: false },
+            { id: "income", visible: true },
+          ],
+        },
+        { headers: { etag: '"7"' } },
+      );
+    if (path.pathname === "/v1/analytics/summary") {
+      expect(Object.fromEntries(path.searchParams)).toEqual({
+        ...period,
+        presentationCurrency: "USD",
+      });
+      const inUsd = (amountMinor: string) => ({ amountMinor, currency: "USD" });
+      return Response.json({
+        ...summary,
+        baseCurrency: "USD",
+        netWorth: inUsd("5000"),
+        income: inUsd("3000"),
+        expenses: inUsd("1000"),
+        savingsCapacity: inUsd("2000"),
+      });
+    }
+    return fixture(url, init);
+  });
+  await renderPeriod({});
+  expect(screen.getAllByRole("term").map((node) => node.textContent)).toEqual([
+    "Gastos del período",
+    "Ingresos del período",
+  ]);
+  expect(screen.getByText(/USD\s30,00/)).toBeVisible();
+  expect(screen.getByLabelText("Desde")).toHaveValue(period.from);
+});
+
+it.each(["quarter", "year"])(
+  "renders %s cash-flow filters, typed metrics and returned FX rates",
+  async (granularity) => {
+    const fixture = fetchImpl.getMockImplementation()!;
+    const fxRatesUsed = [
+      {
+        baseCurrency: "USD",
+        quoteCurrency: "COP",
+        rate: "3980.25",
+        rateDate: period.from,
+        source: "frankfurter",
+        freshness: "stale",
+      },
+    ];
+    fetchImpl.mockImplementation(async (input, init) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/v1/analytics/cash-flow") {
+        expect(url.searchParams.get("granularity")).toBe(granularity);
+        expect(url.searchParams.getAll("accountIds")).toEqual([id, other]);
+        expect(url.searchParams.getAll("tagIds")).toEqual([other]);
+        return Response.json({
+          series: [{ period: period.from, value: cop("1250") }],
+          categories: [],
+          fxRatesUsed,
+        });
+      }
+      if (url.pathname === "/v1/analytics/advanced") {
+        const metric = url.searchParams.get("metric");
+        const metadata = {
+          metric,
+          generatedAt: `${period.to}T00:00:00Z`,
+          currency: "COP",
+          assumptions: [],
+          missingData: ["Cobertura parcial"],
+        };
+        if (metric === "net_worth_history")
+          return Response.json({
+            ...metadata,
+            data: {
+              series: [
+                {
+                  date: period.to,
+                  assets: cop("3000"),
+                  debts: cop("1000"),
+                  netWorth: cop("2000"),
+                  fxValuationChange: null,
+                },
+              ],
+            },
+          });
+        if (metric === "spending_heatmap")
+          return Response.json({
+            ...metadata,
+            data: {
+              cells: [
+                { weekday: 1, dayOfMonth: 12, amount: cop("1250"), count: 2 },
+              ],
+            },
+          });
+        return new Response(null, { status: 501 });
+      }
+      return fixture(input, init);
+    });
+    for (const metric of ["net_worth_history", "spending_heatmap"]) {
+      const rendered = render(
+        await Analytics({
+          searchParams: Promise.resolve({
+            ...period,
+            granularity,
+            metric,
+            accountIds: [id, other],
+            tagIds: other,
+          }),
+        }),
+      );
+      expect(
+        screen.getByRole("table", {
+          name:
+            granularity === "quarter"
+              ? "Flujo neto por trimestre"
+              : "Flujo neto por año",
+        }),
+      ).toBeVisible();
+      expect(
+        screen.getByRole("table", { name: "Tipos de cambio utilizados" }),
+      ).toBeVisible();
+      expect(screen.getByText("3980.25")).toBeVisible();
+      expect(screen.getByText("frankfurter")).toBeVisible();
+      expect(screen.getByText("Vencida")).toBeVisible();
+      expect(
+        screen.getByRole("table", {
+          name:
+            metric === "net_worth_history"
+              ? "Historial del patrimonio neto"
+              : "Mapa de gastos",
+        }),
+      ).toBeVisible();
+      expect(screen.getByText("Cobertura parcial")).toBeVisible();
+      rendered.unmount();
+    }
+  },
+);
+
+it("rejects malformed analytics dimension IDs before session or fetch", async () => {
+  render(
+    await Analytics({
+      searchParams: Promise.resolve({
+        ...period,
+        categoryIds: ["not-an-id", id],
+      }),
+    }),
+  );
+  expect(screen.getByRole("alert")).toBeVisible();
+  expect(requireSession).not.toHaveBeenCalled();
+  expect(fetchImpl).not.toHaveBeenCalled();
 });
 
 it.each([503, 200])(

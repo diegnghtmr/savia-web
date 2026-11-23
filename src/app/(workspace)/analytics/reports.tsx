@@ -1,3 +1,4 @@
+import { FxFreshness } from "@/app/_components/insights-period-form";
 import { money } from "@/lib/account-money";
 import type { readCashFlow } from "@/lib/cash-flow-report";
 import type { readSummary } from "@/lib/insights-gateway";
@@ -20,15 +21,20 @@ export function IncomeAndExpense({
       ) : (
         <p role="alert">No pudimos cargar los ingresos y gastos.</p>
       )}
+      <FxFreshness rates={summary?.fxRates} fallback={false} />
     </section>
   );
 }
 
 export function CashFlow({
   report,
+  unit,
 }: {
   report: Awaited<ReturnType<typeof readCashFlow>>;
+  unit: string;
 }) {
+  if (report === "unavailable")
+    return <p role="alert">El flujo de caja no está disponible.</p>;
   if (!report) return <p role="alert">No pudimos cargar el flujo de caja.</p>;
   return (
     <>
@@ -57,10 +63,10 @@ export function CashFlow({
       )}
       {report.points.length > 0 && (
         <table>
-          <caption>Flujo neto por mes</caption>
+          <caption>Flujo neto por {unit}</caption>
           <thead>
             <tr>
-              <th scope="col">Inicio del mes (UTC)</th>
+              <th scope="col">Inicio del {unit} (UTC)</th>
               <th scope="col">Flujo neto</th>
             </tr>
           </thead>
@@ -74,6 +80,7 @@ export function CashFlow({
           </tbody>
         </table>
       )}
+      <FxFreshness rates={report.fxRates} fallback={false} />
     </>
   );
 }

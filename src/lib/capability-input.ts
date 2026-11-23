@@ -1,8 +1,10 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
+import { bulkDraft } from "./bulk-transactions";
 import { catalogDraft } from "./catalog-input";
 import { dataId } from "./data-access";
+import { preferencesDraft, preferencesRoute } from "./dashboard-preferences";
 import { strongETag } from "./etag";
 import { fields } from "./financial-draft";
 import { editFundDraft, withdrawFundDraft } from "./fund-mutation";
@@ -75,6 +77,23 @@ export function capabilityCommand(
   const id = dataId(bound.id);
   const { kind, argumentsHash, version } = bound;
   switch (kind) {
+    case "bulk-transactions": {
+      const body = bulkDraft(form);
+      return body && { route: "transactions/bulk", status: 200, body };
+    }
+    case "dashboard-preferences": {
+      if (!strongETag(version)) return null;
+      const body = preferencesDraft(form);
+      return (
+        body && {
+          route: preferencesRoute,
+          status: 200,
+          method: "PUT",
+          version,
+          body,
+        }
+      );
+    }
     case "catalog-category":
     case "catalog-payee":
     case "catalog-tag": {

@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
+import { FxFreshness } from "@/app/_components/insights-period-form";
 import { JobPoll } from "@/app/_components/job-poll";
 import { dataAccess, dataId, dataObject } from "@/lib/data-access";
+import { fxProvenance } from "@/lib/fx-provenance";
 
 const routes = {
   runs: ["report-runs", "Ejecución del informe"],
@@ -34,6 +36,9 @@ export default async function ArtifactPage({
   return (
     <>
       <h1>{title}</h1>
+      {kind === "runs" && (
+        <FxFreshness rates={fxProvenance(job.fxRatesUsed)} fallback={false} />
+      )}
       {job.status === "queued" || job.status === "processing" ? (
         <>
           <p role="status">Preparando archivo…</p>

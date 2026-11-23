@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CapabilityReceipt } from "@/app/_components/capability-receipt";
 import { requireProfile } from "@/lib/require-profile";
 import {
   ledgerFilters,
@@ -6,6 +7,8 @@ import {
   statuses,
 } from "@/lib/transactions-gateway";
 import type { SearchParams } from "@/lib/view-filters";
+import { canWriteWorkspace } from "@/lib/workspace-roles";
+import { BulkForm } from "./bulk-form";
 import { TransactionSummary } from "./summary";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +22,8 @@ export default async function TransactionsPage({
   const profile = await requireProfile();
   if (profile.kind === "failed")
     return <p role="alert">No pudimos consultar tu perfil.</p>;
-  const filters = ledgerFilters(await searchParams);
+  const { lote, guardado, ...query } = await searchParams;
+  const filters = ledgerFilters(query);
   if (!filters) return <InvalidFilters />;
   const scope = await ledgerScope(profile.accessToken);
   if (!scope) return <Link href="/overview">Revisa el espacio activo</Link>;
@@ -38,10 +42,55 @@ export default async function TransactionsPage({
     ["status", "Estado", new Map(Object.entries(statuses))],
   ] as const;
   if (page.cursor) filters.set("cursor", page.cursor);
+  const binding = { userId: profile.userId, workspaceId: scope.workspaceId };
+  const names = new Map<string, string>(
+    canWriteWorkspace(scope.role)
+      ? page.items.flatMap((row) =>
+          row.version && row.statusCode !== "voided"
+            ? [
+                [
+                  `${row.id}:${row.version}`,
+                  row.description || row.type,
+                ] as const,
+              ]
+            : [],
+        )
+      : [],
+  );
+  const rows = (
+    <ul>
+      {page.items.map((row) => {
+        const target = `${row.id}:${row.version}`;
+        return (
+          <li key={row.id}>
+            <h2>
+              <Link href={`/transactions/${row.id}`} prefetch={false}>
+                {row.description || row.type}
+              </Link>
+            </h2>
+            {names.has(target) && (
+              <label className="field field-inline">
+                <input name="target" type="checkbox" value={target} />
+                Seleccionar {names.get(target)}
+              </label>
+            )}
+            <TransactionSummary row={row} labels={labels} />
+          </li>
+        );
+      })}
+    </ul>
+  );
   return (
     <>
       <p className="eyebrow">Espacio: {scope.name}</p>
       <h1>Transacciones</h1>
+      {lote === "conflicto" && (
+        <p role="alert">
+          Alguna transacción cambió. Revisa la lista actualizada antes de volver
+          a intentarlo.
+        </p>
+      )}
+      {guardado && <CapabilityReceipt requested={guardado} {...binding} />}
       <Link className="call-to-action" href="/transactions/new">
         Nueva transacción
       </Link>
@@ -90,19 +139,19 @@ export default async function TransactionsPage({
           Filtrar
         </button>
       </form>
-      {page.items.length ? (
-        <ul>
-          {page.items.map((row) => (
-            <li key={row.id}>
-              <h2>
-                <Link href={`/transactions/${row.id}`} prefetch={false}>
-                  {row.description || row.type}
-                </Link>
-              </h2>
-              <TransactionSummary row={row} labels={labels} />
-            </li>
-          ))}
-        </ul>
+      {names.size ? (
+        <BulkForm
+          key={`${scope.workspaceId}:${[...names.keys()].join(",")}`}
+          binding={binding}
+          names={names}
+          categories={labels.categories}
+          payees={labels.payees}
+          tags={labels.tags}
+        >
+          {rows}
+        </BulkForm>
+      ) : page.items.length ? (
+        rows
       ) : (
         <p>No hay transacciones en esta página.</p>
       )}

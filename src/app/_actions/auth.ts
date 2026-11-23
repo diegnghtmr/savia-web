@@ -3,6 +3,10 @@
 import { redirect } from "next/navigation";
 import { signIn, signUp, signOut } from "@/lib/auth-gateway";
 import { AUTH_RESULT_KINDS, type AuthResult } from "@/lib/auth-result";
+import { dataId } from "@/lib/data-access";
+import { fields } from "@/lib/financial-draft";
+import { insightsTransport } from "@/lib/insights-gateway";
+import { requireProfile } from "@/lib/require-profile";
 
 /**
  * Server action for user sign-in.
@@ -47,5 +51,47 @@ export async function signUpAction(
  */
 export async function signOutAction(): Promise<never> {
   await signOut();
+  redirect("/sign-in");
+}
+
+async function sessionChange(userId: string, form: FormData) {
+  if (!dataId(userId) || fields(form, ["confirmar"])?.confirmar !== "yes")
+    redirect("/sessions?resultado=invalida");
+  const profile = await requireProfile();
+  if (profile.kind !== "ready" || profile.userId !== userId)
+    redirect("/sessions?resultado=error");
+  return profile;
+}
+
+export async function revokeOtherSessionsAction(
+  userId: string,
+  form: FormData,
+): Promise<never> {
+  const { accessToken } = await sessionChange(userId, form);
+  const response = await insightsTransport(accessToken)(
+    "me/sessions/revoke-others",
+    undefined,
+    {
+      method: "POST",
+      signal: AbortSignal.timeout(5000),
+    },
+  );
+  const result =
+    response?.status === 204
+      ? "otras"
+      : response?.status === 404 || response?.status === 501
+        ? "no-disponible"
+        : "error";
+  redirect(`/sessions?resultado=${result}`);
+}
+
+export async function revokeAllSessionsAction(
+  userId: string,
+  form: FormData,
+): Promise<never> {
+  await sessionChange(userId, form);
+  const result = await signOut(undefined, "all");
+  if (result.kind !== AUTH_RESULT_KINDS.signedOut)
+    redirect("/sessions?resultado=error");
   redirect("/sign-in");
 }

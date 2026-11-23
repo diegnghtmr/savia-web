@@ -172,6 +172,28 @@ describe("auth gateway", () => {
   });
 
   describe("signOut", () => {
+    it.each([true, false])(
+      "attempts global, then local only after success (%s)",
+      async (ok) => {
+        const logout = vi.fn().mockResolvedValueOnce({ error: ok ? null : {} });
+        logout.mockResolvedValueOnce({ error: null });
+        const ports = mockPorts({
+          auth: {
+            signUp: vi.fn(),
+            signInWithPassword: vi.fn(),
+            signOut: logout,
+          },
+        });
+        expect(await signOut(ports, "all")).toEqual({
+          kind: ok ? AUTH_RESULT_KINDS.signedOut : AUTH_RESULT_KINDS.failed,
+        });
+        expect(logout.mock.calls).toEqual(
+          ok
+            ? [[{ scope: "global" }], [{ scope: "local" }]]
+            : [[{ scope: "global" }]],
+        );
+      },
+    );
     it("returns signedOut on successful sign out", async () => {
       const client: AuthClient = {
         auth: {

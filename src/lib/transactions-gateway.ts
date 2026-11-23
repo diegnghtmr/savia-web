@@ -89,6 +89,13 @@ function transaction(value: unknown) {
     type: types[type as keyof typeof types],
     status: statuses[status as keyof typeof statuses],
     statusCode: status,
+    version:
+      typeof value.version === "number" &&
+      Number.isSafeInteger(value.version) &&
+      value.version >= 1
+        ? value.version
+        : undefined,
+    extraordinary: value.extraordinary === true,
     etag: text(value.etag),
     categoryId: text(value.categoryId)?.toLowerCase(),
     payeeId: text(value.payeeId)?.toLowerCase(),

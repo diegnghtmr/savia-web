@@ -5,6 +5,7 @@ import { CapabilityReceipt } from "@/app/_components/capability-receipt";
 import { InsightsPeriodForm } from "@/app/_components/insights-period-form";
 import { WorkspaceRecovery } from "@/app/_components/workspace-recovery";
 import { WorkspaceSelector } from "@/app/_components/workspace-selector";
+import { readPreferences } from "@/lib/dashboard-preferences";
 import { readSummary } from "@/lib/insights-gateway";
 import { insightsPeriod } from "@/lib/insights-period";
 import { readDetected, readUpcoming } from "@/lib/overview-recurring";
@@ -64,9 +65,30 @@ export default async function OverviewPage({
   const editor = canWriteWorkspace(active.role)
     ? { ...binding, period }
     : undefined;
-  const summary = withDeadline((signal) =>
-    readSummary(accessToken, active, period, signal),
-  );
+  const preferencesRead = active.baseCurrency
+    ? withDeadline((signal) => readPreferences(accessToken, active, signal))
+    : Promise.resolve(null);
+  const summary = preferencesRead.then(async (result) => {
+    const preferences = typeof result === "object" ? result : null;
+    const savedPeriod = preferences?.period;
+    const explicit = input.from !== undefined;
+    const selected =
+      !explicit && savedPeriod?.preset === "custom"
+        ? { from: savedPeriod.from, to: savedPeriod.to }
+        : period;
+    const presetUnavailable =
+      !explicit && !!savedPeriod && savedPeriod.preset !== "custom";
+    const summary = await withDeadline((signal) =>
+      readSummary(
+        accessToken,
+        active,
+        selected,
+        signal,
+        preferences?.presentationCurrency,
+      ),
+    );
+    return { summary, period: selected, preferences, presetUnavailable };
+  });
   const upcoming = withDeadline((signal) =>
     readUpcoming(accessToken, active, signal),
   );
@@ -99,9 +121,14 @@ export default async function OverviewPage({
           <li>
             <a href="/members">Miembros del espacio</a>
           </li>
+          <li>
+            <a href="/sessions">Sesiones activas</a>
+          </li>
+          <li>
+            <a href="/overview/preferences">Personalizar vista general</a>
+          </li>
         </ul>
       </section>
-      <InsightsPeriodForm period={period} />
       <Suspense fallback={<p role="status">Cargando resumen financiero…</p>}>
         <FinancialSummary report={summary} />
       </Suspense>

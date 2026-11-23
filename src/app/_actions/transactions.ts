@@ -73,7 +73,14 @@ function payload(bound: TransactionSubmission, form: FormData) {
     description: description || null,
     tagIds,
   };
-  if (bound.mode === "edit") return old ? fields : null;
+  if (bound.mode === "edit") {
+    const value = get("extraordinary", true);
+    if (!old || (value !== "" && value !== "true" && value !== "false"))
+      return null;
+    return value === ""
+      ? fields
+      : { ...fields, extraordinary: value === "true" };
+  }
   const type = get("type"),
     account = get("accountId"),
     amount = get("amount");

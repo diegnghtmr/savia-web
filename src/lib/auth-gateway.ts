@@ -28,7 +28,9 @@ export interface AuthClient {
       data: { user: unknown; session: unknown } | null;
       error: unknown;
     }>;
-    signOut(): Promise<{ error: unknown }>;
+    signOut(options?: {
+      scope: "global" | "local";
+    }): Promise<{ error: unknown }>;
   };
 }
 
@@ -147,19 +149,26 @@ export async function signUp(
  */
 export async function signOut(
   ports: AuthPorts = productionAuthPorts,
+  mode?: "all",
 ): Promise<AuthResult> {
   try {
     const client = await ports.getClient();
-    const { error } = await client.auth.signOut();
-    if (error) {
+    const result =
+      mode === "all"
+        ? await client.auth.signOut({ scope: "global" })
+        : await client.auth.signOut();
+    if (result.error) {
+      return { kind: AUTH_RESULT_KINDS.failed };
+    }
+    if (
+      mode === "all" &&
+      (await client.auth.signOut({ scope: "local" })).error
+    ) {
       return { kind: AUTH_RESULT_KINDS.failed };
     }
     return { kind: AUTH_RESULT_KINDS.signedOut };
-  } catch (error) {
-    console.error(
-      "Sign-out failed at the session or auth client boundary.",
-      error instanceof Error ? error.message : String(error),
-    );
+  } catch {
+    console.error("Sign-out failed at the session or auth client boundary.");
     return { kind: AUTH_RESULT_KINDS.unavailable };
   }
 }

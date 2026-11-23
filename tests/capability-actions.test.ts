@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import Credentials from "@/app/(workspace)/ai-credentials/page";
 import ApprovalDetail from "@/app/(workspace)/approvals/[approvalId]/page";
 import Members from "@/app/(workspace)/members/page";
+import { revokeOtherSessionsAction } from "@/app/_actions/auth";
 import { approveDevice } from "@/app/_actions/cli-device";
 import { saveCapability } from "@/app/_actions/capabilities";
 import { CapabilityReceipt } from "@/app/_components/capability-receipt";
@@ -27,6 +28,7 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("@/lib/session", () => ({
   requireSession: vi.fn(async () => ({ accessToken: "fixture" })),
+  writableSessionClient: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({
   redirect: (href: string) => {
@@ -80,6 +82,196 @@ async function reserve(bound: ReturnType<typeof bind>, form: FormData) {
   expect(result.prepared).toEqual(expect.stringMatching(/^[\da-f-]{36}$/));
   form.set("draftPrepared", result.prepared!);
 }
+
+it("validates a confirmed bulk conversion before session and sends one atomic versioned request", async () => {
+  const bound = bind("bulk-transactions");
+  const draft = (targetType = "income") => {
+    const form = input({
+      action: "convertImported",
+      targetType,
+      confirmed: "yes",
+    });
+    form.append("target", `${id}:7`);
+    form.append("target", `${userId}:8`);
+    return form;
+  };
+  const missingConfirmation = draft();
+  missingConfirmation.delete("confirmed");
+  const duplicate = draft();
+  duplicate.append("target", `${id.toUpperCase()}:9`);
+  const badVersion = draft();
+  badVersion.append("target", `${workspaceId}:0`);
+  const tooMany = draft();
+  for (let i = 0; i < 99; i++) tooMany.append("target", `${id}:7`);
+  const before = new Map(jar);
+  for (const invalid of [
+    draft(""),
+    missingConfirmation,
+    duplicate,
+    badVersion,
+    tooMany,
+  ]) {
+    expect(await saveCapability(bound, null, invalid)).toEqual({
+      error: "Revisa los datos del formulario.",
+    });
+  }
+  expect(requireSession).not.toHaveBeenCalled();
+  expect(send).not.toHaveBeenCalled();
+  expect(jar).toEqual(before);
+
+  const form = draft();
+  role = "viewer";
+  expect(await saveCapability(bound, null, form)).toEqual({
+    error: "No tienes permiso para modificar este espacio.",
+  });
+  expect(send).not.toHaveBeenCalled();
+  role = "editor";
+  await reserve(bound, form);
+  expect(send).not.toHaveBeenCalled();
+  respond = () =>
+    Response.json({
+      updated: [
+        { id, version: 8 },
+        { id: userId, version: 9 },
+      ],
+    });
+  await expect(saveCapability(bound, null, form)).rejects.toThrow(
+    /^redirect:\/transactions\?guardado=[\da-f-]{36}$/,
+  );
+  expect(send).toHaveBeenCalledOnce();
+  const [path, request] = send.mock.calls[0];
+  expect(path).toBe("/v1/transactions/bulk");
+  expect(request.method).toBe("POST");
+  expect(JSON.parse(String(request.body))).toEqual({
+    targets: [
+      { id, expectedVersion: 7 },
+      { id: userId, expectedVersion: 8 },
+    ],
+    action: { type: "convertImported", targetType: "income" },
+  });
+  const headers = new Headers(request.headers);
+  expect(headers.get("x-workspace-id")).toBe(workspaceId);
+  expect(headers.get("idempotency-key")).toMatch(/^[\da-f-]{36}$/);
+  expect(headers.has("if-match")).toBe(false);
+});
+
+it.each([412, 422, 404, 501, 200])(
+  "fails a bulk write (%i) without marking partial success or retrying",
+  async (status) => {
+    const bound = bind("bulk-transactions");
+    const form = input({
+      action: "setExtraordinary",
+      extraordinary: "false",
+      target: `${id}:7`,
+      confirmed: "yes",
+    });
+    await reserve(bound, form);
+    respond = () => Response.json({ updated: [] }, { status });
+    const sendBulk = saveCapability(bound, null, form);
+    if (status === 412)
+      await expect(sendBulk).rejects.toThrow(
+        "redirect:/transactions?lote=conflicto",
+      );
+    else
+      await expect(sendBulk).resolves.toEqual({
+        error:
+          status === 422
+            ? "El lote no cumple las reglas. No se modificó ninguna transacción."
+            : status === 404 || status === 501
+              ? "Las acciones en lote no están disponibles."
+              : "No pudimos completar la solicitud.",
+      });
+    expect(send).toHaveBeenCalledOnce();
+    const request = send.mock.calls[0][1];
+    expect(JSON.parse(String(request.body)).action).toEqual({
+      type: "setExtraordinary",
+      extraordinary: false,
+    });
+    const key = new Headers(request.headers).get("idempotency-key")!;
+    expect(await draftReceiptFor(key, workspaceId, userId)).toBeUndefined();
+  },
+);
+
+it.each([200, 409, 412, 404, 501])(
+  "writes active-workspace dashboard preferences with GET version (%i)",
+  async (status) => {
+    const bound = bind("dashboard-preferences", { version: '"dashboard-7"' });
+    const form = input({
+      preset: "custom",
+      from: "2026-01-01",
+      to: "2026-01-31",
+      presentationCurrency: "USD",
+      visible_income: "yes",
+      order_income: "2",
+      order_expenses: "1",
+    });
+    form.set("order_expenses", "2");
+    expect(await saveCapability(bound, null, form)).toEqual({
+      error: "Revisa los datos del formulario.",
+    });
+    expect(requireSession).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+    form.set("order_expenses", "1");
+    role = "viewer";
+    await reserve(bound, form);
+    const expected = {
+      cards: [
+        { id: "expenses", visible: false },
+        { id: "income", visible: true },
+      ],
+      period: { preset: "custom", from: "2026-01-01", to: "2026-01-31" },
+      presentationCurrency: "USD",
+    };
+    respond = () => Response.json({ ...expected, version: 8 }, { status });
+    const result = saveCapability(bound, null, form);
+    if (status === 200)
+      await expect(result).rejects.toThrow(
+        /^redirect:\/overview\/preferences\?guardado=/,
+      );
+    else if (status === 409 || status === 412)
+      await expect(result).rejects.toThrow(
+        "redirect:/overview/preferences?conflicto=1",
+      );
+    else
+      await expect(result).resolves.toEqual({
+        error: "Las preferencias de la vista general no están disponibles.",
+      });
+    expect(send).toHaveBeenCalledOnce();
+    const [path, init] = send.mock.calls[0];
+    const headers = new Headers(init.headers);
+    expect(path).toBe("/v1/me/dashboard-preferences");
+    expect(init.method).toBe("PUT");
+    expect(JSON.parse(String(init.body))).toEqual(expected);
+    expect(headers.get("if-match")).toBe('"dashboard-7"');
+    expect(headers.get("x-workspace-id")).toBe(workspaceId);
+    expect(headers.get("idempotency-key")).toMatch(/^[\da-f-]{36}$/);
+  },
+);
+
+it.each([204, 404, 501])(
+  "closes other sessions without a workspace or request body (%i)",
+  async (status) => {
+    await expect(
+      Promise.resolve().then(() => revokeOtherSessionsAction(userId, input())),
+    ).rejects.toThrow("redirect:/sessions?resultado=invalida");
+    expect(requireSession).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+    respond = () => new Response(null, { status });
+    await expect(
+      revokeOtherSessionsAction(userId, input({ confirmar: "yes" })),
+    ).rejects.toThrow(
+      status === 204
+        ? "redirect:/sessions?resultado=otras"
+        : "redirect:/sessions?resultado=no-disponible",
+    );
+    expect(send).toHaveBeenCalledOnce();
+    const [path, init] = send.mock.calls[0];
+    expect(path).toBe("/v1/me/sessions/revoke-others");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBeUndefined();
+    expect(new Headers(init.headers).has("x-workspace-id")).toBe(false);
+  },
+);
 
 it.each(["confirm", "discard"])(
   "posts a version-bound subscription %s without a transaction body",

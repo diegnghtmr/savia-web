@@ -1,3 +1,4 @@
+import { FxFreshness } from "@/app/_components/insights-period-form";
 import { money } from "@/lib/account-money";
 import type { readBalanceProjection } from "@/lib/balance-projection-report";
 
@@ -35,6 +36,7 @@ export function BalanceProjection({
           </table>
         </>
       )}
+      <FxFreshness rates={report?.fxRates} fallback={false} />
     </section>
   );
 }

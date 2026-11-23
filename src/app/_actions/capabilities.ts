@@ -2,12 +2,14 @@
 
 import { redirect } from "next/navigation";
 import { agentAnswer } from "@/lib/agent-stream";
+import { bulkDraft, bulkResult } from "@/lib/bulk-transactions";
 import {
   capabilityCommand,
   creatorOnly,
   type CapabilityBinding,
 } from "@/lib/capability-input";
 import { dataAccess, dataId, dataObject } from "@/lib/data-access";
+import { preferencesBody } from "@/lib/dashboard-preferences";
 import { admitDraftSeed, persistentDraft } from "@/lib/draft-idempotency";
 import { prepareDraft } from "@/lib/draft-preparation";
 import { draftWarning } from "@/lib/draft-retry";
@@ -60,7 +62,8 @@ export async function saveCapability(
     subscription ? bound.period : undefined,
   );
   const fundHref = `/funds/${dataId(bound.id)}`;
-  const writing = fund || subscription || catalog;
+  const bulk = bound.kind === "bulk-transactions";
+  const writing = fund || subscription || catalog || bulk;
   if (writing && !canWriteWorkspace(access.workspace.role))
     return { error: "No tienes permiso para modificar este espacio." };
   const members = bound.kind.startsWith("member-");
@@ -146,6 +149,37 @@ export async function saveCapability(
           : "Revisa el importe y la cuenta de destino.";
         return { error };
       }
+    }
+    if (bulk) {
+      if (status === 412) redirect("/transactions?lote=conflicto");
+      if (status === 404 || status === 501)
+        return { error: "Las acciones en lote no están disponibles." };
+      if (status === 422)
+        return {
+          error:
+            "El lote no cumple las reglas. No se modificó ninguna transacción.",
+        };
+      if (status === 409)
+        return { error: "El lote entra en conflicto con un envío anterior." };
+      if (
+        status !== 200 ||
+        !bulkResult(await dataObject(response), bulkDraft(form))
+      )
+        return failed;
+      key.receipt(key.key);
+      redirect(`/transactions?guardado=${key.key}`);
+    }
+    if (bound.kind === "dashboard-preferences") {
+      const href = "/overview/preferences";
+      if (status === 409 || status === 412) redirect(`${href}?conflicto=1`);
+      if (status === 404 || status === 501)
+        return {
+          error: "Las preferencias de la vista general no están disponibles.",
+        };
+      if (status !== 200 || !preferencesBody(await dataObject(response)))
+        return failed;
+      key.receipt(key.key);
+      redirect(`${href}?guardado=${key.key}`);
     }
     if (response?.status === 412)
       return { error: "Los datos cambiaron. Recarga la página." };

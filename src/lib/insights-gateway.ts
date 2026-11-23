@@ -1,6 +1,7 @@
 import "server-only";
 
 import { redirect } from "next/navigation";
+import { fxProvenance } from "./fx-provenance";
 import type { InsightsPeriod } from "./insights-period";
 import { loadServerConfig } from "./server-config";
 import { amount } from "./transactions-gateway";
@@ -69,11 +70,16 @@ export async function readSummary(
   workspace: Workspace,
   period: InsightsPeriod,
   signal?: AbortSignal,
+  presentationCurrency?: string,
 ) {
-  if (!workspace.baseCurrency) return null;
+  const currency = presentationCurrency ?? workspace.baseCurrency;
+  if (!currency) return null;
   const response = await insightsTransport(token, workspace)(
     "analytics/summary",
-    new URLSearchParams(period),
+    new URLSearchParams({
+      ...period,
+      ...(presentationCurrency && { presentationCurrency }),
+    }),
     signal ? { signal } : undefined,
   );
   if (response?.status !== 200) return null;
@@ -82,7 +88,7 @@ export async function readSummary(
     !body ||
     body.periodStart !== period.from ||
     body.periodEnd !== period.to ||
-    body.baseCurrency !== workspace.baseCurrency
+    body.baseCurrency !== currency
   )
     return null;
   const netWorth = baseAmount(body.netWorth, body.baseCurrency);
@@ -93,6 +99,9 @@ export async function readSummary(
   const percent = body.budgetUtilizationPercent;
   return {
     netWorth,
+    assets: baseAmount(body.assets, currency),
+    debts: baseAmount(body.debts, currency),
+    fxRates: fxProvenance(body.fxRatesUsed),
     income,
     expenses,
     netFlow,

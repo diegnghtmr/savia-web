@@ -18,6 +18,7 @@ type Initial = {
   categoryId?: string;
   payeeId?: string;
   description?: string;
+  extraordinary?: boolean;
   tagIds: string[];
 };
 export function TransactionForm({
@@ -165,6 +166,18 @@ export function TransactionForm({
             </div>
             {select("categoryId", "Categoría", Array.from(labels.categories))}
             {select("payeeId", "Beneficiario", Array.from(labels.payees))}
+            {mode === "edit" && (
+              <label className="field">
+                Extraordinaria
+                <select name="extraordinary" defaultValue="">
+                  <option value="">
+                    Sin cambios ({row?.extraordinary ? "sí" : "no"})
+                  </option>
+                  <option value="true">Sí</option>
+                  <option value="false">No</option>
+                </select>
+              </label>
+            )}
             <div className="field">
               <label htmlFor={`${mode}-tags`}>Etiquetas</label>
               <select

@@ -177,6 +177,38 @@ it("replays the exact KWD draft after the backend commits and loses its reply", 
   expect(committed.size).toBe(2);
 });
 
+it("sets and clears extraordinary only on a versioned transaction edit", async () => {
+  const date = "2026-11-20";
+  for (const extra of ["yes", "1"]) {
+    await expect(
+      saveTransactionAction(edit, null, form({ date, extraordinary: extra })),
+    ).resolves.toBe("Revisa los datos de la transacción.");
+  }
+  const duplicate = form({ date, extraordinary: "true" });
+  duplicate.append("extraordinary", "false");
+  await expect(saveTransactionAction(edit, null, duplicate)).resolves.toBe(
+    "Revisa los datos de la transacción.",
+  );
+  expect(requireSession).not.toHaveBeenCalled();
+  expect(cookieWrites).not.toHaveBeenCalled();
+  expect(fetchImpl).not.toHaveBeenCalled();
+
+  const edits: boolean[] = [];
+  fetchImpl.mockImplementation(async (url, init) => {
+    if (init?.method !== "PATCH") return membership(String(url));
+    expect(String(url)).toMatch(`/v1/transactions/${transaction}`);
+    expect(new Headers(init.headers).get("if-match")).toBe('"7"');
+    edits.push(JSON.parse(String(init.body)).extraordinary);
+    return Response.json({ id: transaction });
+  });
+  for (const extraordinary of ["true", "false"]) {
+    await expect(
+      saveTransactionAction(edit, null, form({ date, extraordinary })),
+    ).rejects.toThrow(`redirect:/transactions/${transaction}`);
+  }
+  expect(edits).toEqual([true, false]);
+});
+
 it("sends the rendered If-Match for edit and void without changing a newer record", async () => {
   const state = {
     version: 8,
