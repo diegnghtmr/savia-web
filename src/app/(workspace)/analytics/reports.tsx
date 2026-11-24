@@ -66,7 +66,11 @@ export function CashFlow({
           <caption>Flujo neto por {unit}</caption>
           <thead>
             <tr>
-              <th scope="col">Inicio del {unit} (UTC)</th>
+              {unit === "semana" ? (
+                <th scope="col">Inicio de la semana (UTC)</th>
+              ) : (
+                <th scope="col">Inicio del {unit} (UTC)</th>
+              )}
               <th scope="col">Flujo neto</th>
             </tr>
           </thead>

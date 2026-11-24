@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import Analytics from "@/app/(workspace)/analytics/page";
 import Overview from "@/app/(workspace)/overview/page";
 import { requireSession } from "@/lib/session";
@@ -247,6 +247,89 @@ it.each(["quarter", "year"])(
     }
   },
 );
+
+function stubCashFlow(starts: string[]) {
+  const fixture = fetchImpl.getMockImplementation()!;
+  const sent: string[] = [];
+  fetchImpl.mockImplementation(async (input, init) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/v1/analytics/advanced")
+      return new Response(null, { status: 501 });
+    if (url.pathname !== "/v1/analytics/cash-flow") return fixture(input, init);
+    sent.push(url.search);
+    return Response.json({
+      series: starts.map((period) => ({ period, value: cop("1250") })),
+      categories: [],
+    });
+  });
+  return sent;
+}
+
+it.each([
+  ["day", "Día", "día", "Inicio del día", ["2026-01-02", "2026-02-28"]],
+  [
+    "week",
+    "Semana",
+    "semana",
+    "Inicio de la semana",
+    ["2025-12-29", "2026-02-23"],
+  ],
+  ["month", "mes", "mes", "Inicio del mes", ["2026-01-01", "2026-02-01"]],
+  ["quarter", "trimestre", "trimestre", "Inicio del trimestre", ["2026-01-01"]],
+  ["year", "año", "año", "Inicio del año", ["2026-01-01"]],
+] as const)(
+  "renders %s cash-flow bucket labels and sends the selected granularity",
+  async (granularity, label, unit, heading, starts) => {
+    const sent = stubCashFlow([...starts]);
+    render(
+      await Analytics({
+        searchParams: Promise.resolve({ ...period, granularity }),
+      }),
+    );
+    expect(sent).toEqual([
+      `?from=${period.from}&to=${period.to}&granularity=${granularity}`,
+    ]);
+    const select = screen.getByRole("combobox", {
+      name: "Agrupar flujo de caja por",
+    });
+    expect(select).toHaveValue(granularity);
+    expect(within(select).getByRole("option", { name: label })).toBeVisible();
+    const table = screen.getByRole("table", { name: `Flujo neto por ${unit}` });
+    expect(
+      within(table).getByRole("columnheader", { name: `${heading} (UTC)` }),
+    ).toBeVisible();
+    expect(
+      within(table)
+        .getAllByRole("rowheader")
+        .map((row) => row.textContent),
+    ).toEqual(starts);
+    const cells = within(table).getAllByRole("cell");
+    expect(cells).toHaveLength(starts.length);
+    for (const cell of cells) expect(cell).toHaveTextContent(/^COP 12,50$/);
+  },
+);
+
+it.each([
+  ["day", "2026-02-30"],
+  ["day", "2025-12-31"],
+  ["day", "2026-03-01"],
+  ["week", "2026-W01"],
+  ["week", "2026-01-01"],
+  ["week", "2025-12-22"],
+  ["week", "2026-03-02"],
+])("rejects an invalid %s cash-flow bucket %s", async (granularity, start) => {
+  const sent = stubCashFlow([start]);
+  render(
+    await Analytics({
+      searchParams: Promise.resolve({ ...period, granularity }),
+    }),
+  );
+  expect(sent).toHaveLength(1);
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    /^No pudimos cargar el flujo de caja\.$/,
+  );
+  expect(screen.queryByRole("table", { name: /^Flujo neto por/ })).toBeNull();
+});
 
 it("rejects malformed analytics dimension IDs before session or fetch", async () => {
   render(

@@ -3,6 +3,8 @@ import type { SearchParams } from "./view-filters";
 import { WORKSPACE_ID } from "./workspace-gateway";
 
 export const granularities = {
+  day: "Día",
+  week: "Semana",
   month: "mes",
   quarter: "trimestre",
   year: "año",

@@ -27,15 +27,15 @@ export async function readCashFlow(
   const body = record(await response.json().catch(() => null));
   if (!Array.isArray(body?.series) || !Array.isArray(body.categories))
     return null;
+  const firstBucket = bucketStart(period.from, granularity);
   const points = (body.series as unknown[]).map((value) => {
     const point = record(value);
     const start = point?.period;
     const net = baseAmount(point?.value, currency);
     return typeof start === "string" &&
       calendarDate(start) &&
-      start.endsWith("-01") &&
       bucketStart(start, granularity) === start &&
-      start >= bucketStart(period.from, granularity) &&
+      start >= firstBucket &&
       start <= period.to &&
       net
       ? { start, net }
@@ -69,6 +69,14 @@ function bucketStart(
   date: string,
   granularity: AnalyticsFilters["granularity"],
 ) {
+  if (granularity === "day") return date;
+  if (granularity === "week") {
+    // Cash flow labels ISO weeks by their UTC Monday, not by week number.
+    const monday = new Date(`${date}T00:00:00Z`);
+    const daysSinceMonday = (monday.getUTCDay() + 6) % 7;
+    monday.setUTCDate(monday.getUTCDate() - daysSinceMonday);
+    return monday.toISOString().slice(0, 10);
+  }
   const month = Number(date.slice(5, 7));
   const start =
     granularity === "year"

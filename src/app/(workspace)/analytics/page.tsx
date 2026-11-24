@@ -78,7 +78,10 @@ export default async function AnalyticsPage({
       <AnalyticsForm filters={filters} />
       {!hasRates && <FxFreshness />}
       <IncomeAndExpense summary={summary} />
-      <CashFlow report={cashFlow} unit={granularities[granularity]} />
+      <CashFlow
+        report={cashFlow}
+        unit={granularities[granularity].toLowerCase()}
+      />
       {metric && <Advanced metric={metric} report={advanced} />}
       <BalanceProjection report={projection} />
       <p>
