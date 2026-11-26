@@ -38,11 +38,11 @@ Savia Web gives people who track their own money a place to see what's in each a
 
 Use Node.js **24.18.0** and pnpm **11.15.1**, pinned in [mise.toml](mise.toml). For sign-in and workspace features, you need a Supabase Auth project and a running [Savia API](https://github.com/diegnghtmr/savia-backend). Set these in the server environment, not in public client-side variables:
 
-| Variable | Purpose | Default |
-| --- | --- | --- |
-| `SUPABASE_URL` | Supabase project URL. | None |
-| `SUPABASE_ANON_KEY` | Publishable or legacy anonymous key for Supabase Auth, not a service-role key. | None |
-| `BACKEND_BASE_URL` | Base URL of the Savia API reachable from Next.js. | None |
+| Variable            | Purpose                                                                        | Default |
+| ------------------- | ------------------------------------------------------------------------------ | ------- |
+| `SUPABASE_URL`      | Supabase project URL.                                                          | None    |
+| `SUPABASE_ANON_KEY` | Publishable or legacy anonymous key for Supabase Auth, not a service-role key. | None    |
+| `BACKEND_BASE_URL`  | Base URL of the Savia API reachable from Next.js.                              | None    |
 
 ```sh
 git clone https://github.com/diegnghtmr/savia-web.git
@@ -69,12 +69,12 @@ flowchart LR
 
 ## Tech stack
 
-| Layer | Technology |
-| --- | --- |
-| Web | Next.js 16.2.11, React 19.2.8, TypeScript 6.0.3 |
-| Styling | Tailwind CSS 4.1.18 |
-| Auth | Supabase JavaScript client 2.110.9+ and SSR helpers 0.12.3+ |
-| Quality | Vitest 4.1.10, Playwright 1.61.1, axe-core |
+| Layer   | Technology                                                  |
+| ------- | ----------------------------------------------------------- |
+| Web     | Next.js 16.2.11, React 19.2.8, TypeScript 6.0.3             |
+| Styling | Tailwind CSS 4.1.18                                         |
+| Auth    | Supabase JavaScript client 2.110.9+ and SSR helpers 0.12.3+ |
+| Quality | Vitest 4.1.10, Playwright 1.61.1, axe-core                  |
 
 ## Testing
 
